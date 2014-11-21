@@ -1,0 +1,8 @@
+backend_version=17.0
+eclipse.preferences.version=1
+external_includes=
+external_modules=
+include_dirs=include;src;src/eldap;src/mod_muc;src/mod_proxy65;src/mod_pubsub;src/stun;src/web;
+nukeOutputOnClean=false
+output_dir=ebin
+source_dirs=contrib/extract_translations;examples/mtr;src;src/ejabberd_zlib;src/eldap;src/mod_irc;src/mod_muc;src/mod_proxy65;src/mod_pubsub;src/odbc;src/pam;src/stringprep;src/stun;src/tls;src/web;
