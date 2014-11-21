@@ -22,26 +22,13 @@
 	 roster_in_subscription_handler/6,
 	 user_receive_packet_handler/4,
 	 sm_register_connection_hook_handler/3,
-	 sm_remove_connection_hook_handler/3,
-	 user_available_hook_handler/1
+	 sm_remove_connection_hook_handler/3
 	]).
 
 -record(dmsg,{mid,pid}).
 
 sm_register_connection_hook_handler(SID, JID, Info) -> ok.
 sm_remove_connection_hook_handler(SID, JID, Info) -> ok.
-user_available_hook_handler(#jid{server=Domain}=JID) -> 
-	%% 统计并发量
-	?DEBUG("##### counter_log ::::> ~p",[JID]),
-	try
-		[{Total}] = aa_session:total_count_user(Domain),		
-		log({counter,Domain,Total}) 
-	catch
-		_:_ ->
-			Err = erlang:get_stacktrace(),
-			?DEBUG("##### counter_log ERROR ::::> ~p",[Err]) 
-	end,
-	ok.
 
 start_link() ->
 	gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
@@ -370,10 +357,7 @@ init([]) ->
 			  ejabberd_hooks:add(sm_register_connection_hook, Host, ?MODULE, sm_register_connection_hook_handler, 45),
 			  ?INFO_MSG("#### sm_register_connection_hook_handler Host=~p~n",[Host]),
 			  ejabberd_hooks:add(sm_remove_connection_hook, Host, ?MODULE, sm_remove_connection_hook_handler, 45),
-			  ?INFO_MSG("#### sm_remove_connection_hook_handler Host=~p~n",[Host]),
-			  ejabberd_hooks:add(user_available_hook, Host, ?MODULE, user_available_hook_handler, 45),
-			  ?INFO_MSG("#### user_available_hook_handler Host=~p~n",[Host])
-
+			  ?INFO_MSG("#### sm_remove_connection_hook_handler Host=~p~n",[Host])
 	  end, ?MYHOSTS),
 	%% 2014-3-4 : 在这个 HOOK 初始化时，启动一个thrift 客户端，同步数据到缓存服务器
 	%% 启动5281端口，接收内网回调
