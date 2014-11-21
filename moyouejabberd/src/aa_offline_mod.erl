@@ -81,7 +81,6 @@ offline_message_hook_handler(#jid{user=FromUser}=From, #jid{user=User,server=Dom
 %% ====================================================================
 %% Behavioural functions 
 %% ====================================================================
--record(state, { ecache_node, ecache_mod=ecache_server, ecache_fun=cmd }).
 
 init([]) ->
 	?INFO_MSG("INIT_START_OFFLINE_MOD >>>>>>>>>>>>>>>>>>>>>>>> ~p",[liangchuan_debug]),  
@@ -93,7 +92,7 @@ init([]) ->
 		ejabberd_hooks:add(user_available_hook, Host, ?MODULE, user_available_hook_handler, 40)
 	  end, ?MYHOSTS),
 	?INFO_MSG("INIT_END_OFFLINE_MOD <<<<<<<<<<<<<<<<<<<<<<<<< ~p",[liangchuan_debug]),
-	{ok, #state{}}.
+	{ok, []}.
 
 handle_cast(_Msg, State) -> {noreply, State}.
 handle_call(_Request, _From, State) ->

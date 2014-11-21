@@ -328,18 +328,6 @@ user_send_packet_handler(#jid{user=FU,server=FD}=From, To, Packet) ->
 user_receive_packet_handler(_JID, _From, _To, _Packet) ->
 	ok.
 
-
-
-
-%% ====================================================================
-%% Behavioural functions 
-%% ====================================================================
--record(state, {
-	  ecache_node,
-	  ecache_mod=ecache_server,
-	  ecache_fun=cmd
-}).
-
 init([]) ->
 	?DEBUG("INIT_START >>>>>>>>>>>>>>>>>>>>>>>> ~p",[liangchuan_debug]),  
 	lists:foreach(
@@ -370,12 +358,9 @@ init([]) ->
 		_ ->
 			skip
 	end,
-	{ok, #state{}}.
+	{ok, []}.
 
-handle_call({ecache_cmd,Cmd}, _F, #state{ecache_node=Node,ecache_mod=Mod,ecache_fun=Fun}=State) ->
-	?DEBUG("==== ecache_cmd ===> Cmd=~p",[Cmd]),
-	R = rpc:call(Node,Mod,Fun,[{Cmd}]),
-	{reply, R, State};
+
 handle_call({sync_packet,K,From,To,Packet}, _F, State) ->
 	%% insert {K,V} 
 	%% reset msgTime

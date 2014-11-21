@@ -21,8 +21,6 @@
 	remove_group/1
 ]).
 
--record(state, { ecache_node, ecache_mod=ecache_server, ecache_fun=cmd }).
-
 start() ->
 	aa_group_chat_sup:start_child().
 
@@ -89,7 +87,7 @@ get_group_info(Body) ->
 %% Behavioural functions 
 %% ====================================================================
 init([]) ->
-	{ok, #state{}}.
+	{ok, []}.
 
 handle_call(_Requset,_From, State) ->
 	{reply,ok,State}.
