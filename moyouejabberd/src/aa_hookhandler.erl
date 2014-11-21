@@ -161,8 +161,8 @@ send_offline_message(From ,To ,Packet,Type,MID,MsgType,N) when N < 3 ->
 	Form = "body="++http_uri:encode( rfc4627:encode(ParamObj) ),
 	try
 		?DEBUG("MMMMMMMMMMMMMMMMM===Form=~p~n",[Form]),
-%% 		case httpc:request(post,{ HTTPTarget ,[], ?HTTP_HEAD , Form },[],[] ) of   
-		case httpc:request(post,{ HTTPTarget ,[], ?HTTP_HEAD , Form },[{version, "HTTP/1.0"}],[] ) of   
+		case httpc:request(post,{ HTTPTarget ,[], ?HTTP_HEAD , Form },[],[] ) of   
+%% 		case httpc:request(post,{ HTTPTarget ,[], ?HTTP_HEAD , Form },[{version, "HTTP/1.0"}],[] ) of   
 			{ok, {_,_,Body}} ->
 				case rfc4627:decode(Body) of
 					{ok,Obj,_Re} -> 
@@ -179,7 +179,7 @@ send_offline_message(From ,To ,Packet,Type,MID,MsgType,N) when N < 3 ->
 						false
 				end ;
 			{error, Reason} ->
-				?ERROR_MSG("[ERROR] cause N=~p~nErr=~p~nForm=~p~n",[N,Reason,Form]),
+				?INFO_MSG("[ERROR] cause N=~p~nErr=~p~nForm=~p~n",[N,Reason,Form]),
 				timer:sleep(200),
 				send_offline_message(From,To,Packet,Type,MID,MsgType,N+1)
 		end 
@@ -299,6 +299,7 @@ user_send_packet_handler(#jid{user=FU,server=FD}=From, To, Packet) ->
 							   RAttr1 = [{"msgTime",MsgTime}|RAttr0],
 							   RPacket = {Tag,E,RAttr1,Body},
 							   %% add {K,V} to zset
+%% 								?ERROR_MSG("CALL  store msg aa hookhandler", []),
 							   aa_usermsg_handler:store_msg(SYNCID, From, To, RPacket),
 							   
 							   ?DEBUG("==> SYNC_RES new => ID=~p",[SRC_ID_STR]),
@@ -306,8 +307,7 @@ user_send_packet_handler(#jid{user=FU,server=FD}=From, To, Packet) ->
 						   IS_GROUP_CHAT=:=false,ACK_FROM,MT=:="msgStatus" ->
 							   KK = FU++"@"++FD++"/offline_msg",
 							   ?DEBUG("==> SYNC_RES ack => ACK_USER=~p ; ACK_ID=~p",[KK,SYNCID]),
-							   ?INFO_MSG("call aa usermsg handler del msg", []),
-							   aa_usermsg_handler:del_msg(SYNCID),
+							   aa_usermsg_handler:del_msg(SYNCID, From),
 							   ack_task({ack,SYNCID});
 						   true ->
 							   skip
@@ -328,6 +328,18 @@ user_send_packet_handler(#jid{user=FU,server=FD}=From, To, Packet) ->
 user_receive_packet_handler(_JID, _From, _To, _Packet) ->
 	ok.
 
+
+
+
+%% ====================================================================
+%% Behavioural functions 
+%% ====================================================================
+-record(state, {
+	  ecache_node,
+	  ecache_mod=ecache_server,
+	  ecache_fun=cmd
+}).
+
 init([]) ->
 	?DEBUG("INIT_START >>>>>>>>>>>>>>>>>>>>>>>> ~p",[liangchuan_debug]),  
 	lists:foreach(
@@ -346,6 +358,7 @@ init([]) ->
 			  ?INFO_MSG("#### sm_register_connection_hook_handler Host=~p~n",[Host]),
 			  ejabberd_hooks:add(sm_remove_connection_hook, Host, ?MODULE, sm_remove_connection_hook_handler, 45),
 			  ?INFO_MSG("#### sm_remove_connection_hook_handler Host=~p~n",[Host])
+
 	  end, ?MYHOSTS),
 	%% 2014-3-4 : 在这个 HOOK 初始化时，启动一个thrift 客户端，同步数据到缓存服务器
 	%% 启动5281端口，接收内网回调
@@ -358,9 +371,12 @@ init([]) ->
 		_ ->
 			skip
 	end,
-	{ok, []}.
+	{ok, #state{}}.
 
-
+handle_call({ecache_cmd,Cmd}, _F, #state{ecache_node=Node,ecache_mod=Mod,ecache_fun=Fun}=State) ->
+	?DEBUG("==== ecache_cmd ===> Cmd=~p",[Cmd]),
+	R = rpc:call(Node,Mod,Fun,[{Cmd}]),
+	{reply, R, State};
 handle_call({sync_packet,K,From,To,Packet}, _F, State) ->
 	%% insert {K,V} 
 	%% reset msgTime

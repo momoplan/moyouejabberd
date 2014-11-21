@@ -37,7 +37,7 @@ route_group_msg(From,To,Packet)->
 %% "{\"method\":\"remove_user\",\"params\":{\"domain\":\"test.com\",\"gid\":\"123123\",\"uid\":\"123123\"}}"
 append_user(Body)->
 	Params = get_group_info(Body),
-	?ERROR_MSG("append_user params=~p",[Params]),
+	?DEBUG("append_user params=~p",[Params]),
 	{ok,Gid} = rfc4627:get_field(Params,"gid"),
 	{ok,Uid} = rfc4627:get_field(Params,"uid"),
 	case mnesia:dirty_read(?GOUPR_MEMBER_TABLE, Gid) of
@@ -54,7 +54,6 @@ append_user(Body)->
 		_ ->
 			skip
 	end,
-	?ERROR_MSG("append user finished", []),
 	ok.
 remove_user(Body)->
 	Params = get_group_info(Body),
@@ -122,7 +121,9 @@ handle_cast({route_group_msg,#jid{server=Domain,user=FU}=From,#jid{user=GroupId}
 								  #jid{user=UID,server=Domain,luser=UID,lserver=Domain,resource=[],lresource=[]}
 							  end || User <- Res],
 					?DEBUG("###### route_group_msg 002 :::> GroupId=~p ; Roster=~p",[GroupId,Roster]),
-					lists:foreach(fun(Target)-> route_msg(From,Target,Packet,GroupId) end,Roster);
+					lists:foreach(fun(Target) ->
+										  spawn(fun()-> route_msg(From,Target,Packet,GroupId) end)
+								  end,Roster);
 				_ ->
 					?ERROR_MSG("from_user_not_in_group id=~p ; from_user=~p",[GroupId,FU]), 
 					error

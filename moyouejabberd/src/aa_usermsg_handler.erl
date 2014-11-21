@@ -15,17 +15,12 @@
 -define(CHECK_EXPIRE_PERIOD, 1800000).%% 半个小时检查一下过期的消息并且清除
 -define(MSG_EXPRIRE, check_expire).
 
--define(ETS_TABLENAME, ets_tablename).
--define(ETS_KEY_MSGTABLE, msg_table).
--define(ETS_KEY_USER_MSGLIST, user_msglist_table).
--record(tablename, {key, name}).
-
 %% ====================================================================
 %% API functions
 %% ====================================================================
 -export([start_link/0,
 		 store_msg/4,
-		 del_msg/1,
+		 del_msg/2,
 		 get_offline_msg/2]).
 
 start_link() ->
@@ -34,17 +29,19 @@ start_link() ->
 store_msg(Key, From, To, Packet) ->
 	?INFO_MSG("aa user msg rcv store msg call ~p", [{Key, From, To, Packet}]),	
 	store_message(Key, format_user_data(From), format_user_data(To), Packet),
+	aa_msg_statistic:add(),
 	?INFO_MSG("store msg finish", []).
 
-del_msg(Key) ->
+del_msg(Key, UserJid1) ->
 	?INFO_MSG("aa user msg rcv del msg call ~p", [Key]),
-	delete_message(Key),
+	delete_message(Key,format_user_data(UserJid1)),
+	aa_msg_statistic:del(),
 	?INFO_MSG("del msg finish", []).
 
 get_offline_msg(Range, UserJid1) ->
 	UserJid = format_user_data(UserJid1),
-	[#tablename{name = TableName}] = ets:lookup(?ETS_TABLENAME, ?ETS_KEY_MSGTABLE),
-	[#tablename{name = RamMsgListTableName}] = ets:lookup(?ETS_TABLENAME, ?ETS_KEY_USER_MSGLIST),
+	#?MY_USER_TABLES{msg_table = TableName, msg_list_table = RamMsgListTableName} =
+		 get_user_tables(UserJid),
 	Msgs = 
 		case mnesia:dirty_read(RamMsgListTableName, UserJid) of
 			[] ->
@@ -69,6 +66,7 @@ get_offline_msg(Range, UserJid1) ->
 				   true ->
 					   MsgsIds = AvaliableList
 				end,
+				?INFO_MSG("aa usermsg offline ids ~p", [MsgsIds]),
 				%% 保证有消息，保证是倒序的
 				lists:foldl(fun(Key, MList) ->
 									case mnesia:dirty_read(TableName, Key) of
@@ -130,14 +128,11 @@ init([]) ->
 	
 	[mnesia:add_table_copy(RamMsgListTableName, CopyNode, ram_copies)|| CopyNode <- MsgCopyNodes],
 	
+	init_mnesia_user_table_info(Domain),
+	
 	
 	
 %% 	erlang:send_after(?CHECK_EXPIRE_PERIOD, self(), ?MSG_EXPRIRE),
-	
-	%% ets存储表的名字，避免以后频繁的合成
-	ets:new(?ETS_TABLENAME, [{keypos, #tablename.key}, named_table, public, set]),
-	ets:insert(?ETS_TABLENAME, #tablename{key = ?ETS_KEY_MSGTABLE, name = RamMsgTableName}),
-	ets:insert(?ETS_TABLENAME, #tablename{key = ?ETS_KEY_USER_MSGLIST, name = RamMsgListTableName}),
     {ok, #state{tabel_name = RamMsgTableName,
 				msg_list_table = RamMsgListTableName}}.
 
@@ -190,10 +185,6 @@ handle_call(_Request, _From, State) ->
 	Timeout :: non_neg_integer() | infinity.
 %% ====================================================================
 
-handle_cast({del_msg, Key}, State) ->
-	delete_message(Key),
-	?INFO_MSG("del msg finish", []),
-	{noreply, State};
 
 handle_cast({store_msg, Key, From, To, Packet}, State) ->
 	store_message(Key, From, To, Packet),
@@ -259,6 +250,38 @@ code_change(_OldVsn, State, _Extra) ->
 %% Internal functions
 %% ====================================================================
 
+init_mnesia_user_table_info(Domain) ->
+	case ejabberd_config:get_local_option({store_user_tables_info, Domain}) of
+		1 ->
+			create_or_copy_table(?MY_USER_TABLES, [{attributes, record_info(fields,?MY_USER_TABLES)}, 
+												   {ram_copies, [node()]}], ram_copies);
+		_ ->
+			skip
+	end.
+
+create_or_copy_table(TableName, Opts, Copy) ->
+	case mnesia:create_table(TableName, Opts) of
+		{aborted,{already_exists,_}} ->
+			mnesia:add_table_copy(TableName, node(), Copy);
+		_ ->
+			skip
+	end.
+
+get_user_tables(UserJid) ->
+	case mnesia:dirty_read(?MY_USER_TABLES, UserJid) of
+		[TableInfo] ->
+			TableInfo;
+		_ ->
+			NodeNameList = atom_to_list(node()),
+			RamMsgTableName = list_to_atom(NodeNameList ++ "user_message"),			
+			RamMsgListTableName = list_to_atom(NodeNameList ++ "user_msglist"),
+			TableInfo = #?MY_USER_TABLES{id = UserJid,
+										 msg_table = RamMsgTableName, 
+										 msg_list_table = RamMsgListTableName},
+			mnesia:dirty_write(?MY_USER_TABLES, TableInfo),
+			TableInfo
+	end.
+
 unixtime() ->
     {M, S, _} = erlang:now(),
     M * 1000000 + S.
@@ -267,8 +290,8 @@ index_score()-> {M,S,T} = now(),  M*1000000000000+S*1000000+T.
 
 
 store_message(Key, From, To, Packet) ->
-	[#tablename{name = TableName}] = ets:lookup(?ETS_TABLENAME, ?ETS_KEY_MSGTABLE),
-	[#tablename{name = ListTableName}] = ets:lookup(?ETS_TABLENAME, ?ETS_KEY_USER_MSGLIST),
+	#?MY_USER_TABLES{msg_table = TableName, msg_list_table = ListTableName} =
+		 get_user_tables(To),
 	[Domain|_] = ?MYHOSTS, 
 	OfflineExpireDays = case ejabberd_config:get_local_option({offline_expire_days, Domain}) of
 							undefined ->
@@ -296,27 +319,19 @@ store_message(Key, From, To, Packet) ->
 	?INFO_MSG("storem msg update list ~p", [NewListData]),
 	mnesia:dirty_write(ListTableName, NewListData).
 
-delete_message(Key) ->
-	[#tablename{name = TableName}] = ets:lookup(?ETS_TABLENAME, ?ETS_KEY_MSGTABLE),
-	case mnesia:dirty_read(TableName, Key) of
-		[#user_msg{to = ToJid}] ->
-			mnesia:dirty_delete(TableName, Key),
-			
-			%% 有较大的概率，被删除的元素是列表里唯一一个元素
-			[#tablename{name = ListTableName}] = ets:lookup(?ETS_TABLENAME, ?ETS_KEY_USER_MSGLIST),
-			
-			case mnesia:dirty_read(ListTableName, ToJid) of
-				[#user_msg_list{msg_list = KeyList}] ->
-					case KeyList of
-						[Key|Rest] ->
-							NewListData = #user_msg_list{id = ToJid, msg_list = Rest};
-						_ ->
-							NewListData = #user_msg_list{id = ToJid, msg_list = lists:delete(Key, KeyList)}
-					end,
-					mnesia:dirty_write(ListTableName, NewListData);
+delete_message(Key, UserJid) ->
+	#?MY_USER_TABLES{msg_table = TableName, msg_list_table = ListTableName} =
+		 get_user_tables(UserJid),
+	mnesia:dirty_delete(TableName, Key),
+	case mnesia:dirty_read(ListTableName, UserJid) of
+		[#user_msg_list{msg_list = KeyList}] ->
+			case KeyList of
+				[Key|Rest] ->
+					NewListData = #user_msg_list{id = UserJid, msg_list = Rest};
 				_ ->
-					skip
-			end;
+					NewListData = #user_msg_list{id = UserJid, msg_list = lists:delete(Key, KeyList)}
+			end,
+			mnesia:dirty_write(ListTableName, NewListData);
 		_ ->
 			skip
 	end.

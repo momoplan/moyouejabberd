@@ -6,3 +6,8 @@
 
 -define(GOUPR_MEMBER_TABLE, group_members).
 -record(group_members, {gid, members = []}).
+
+-define(MY_USER_TABLES, my_user_table_info).
+
+-record(?MY_USER_TABLES, {id, msg_table, msg_list_table}).
+
