@@ -67,13 +67,7 @@ route_group_msg(From,To,Packet)->
 
 %% {"service":"group_chat","method":"remove_user","params":{"domain":"test.com","gid":"123123","uid":"123123"}}
 %% "{\"method\":\"remove_user\",\"params\":{\"domain\":\"test.com\",\"gid\":\"123123\",\"uid\":\"123123\"}}"
-append_user(Body)->
-	Params = get_group_info(Body),
-	?DEBUG("append_user params=~p",[Params]),
-	{ok,Gid1} = rfc4627:get_field(Params,"gid"),
-	{ok,Uid1} = rfc4627:get_field(Params,"uid"),
-	Gid = binary_to_list(Gid1),
-	Uid = binary_to_list(Uid1),
+append_user(Gid,Uid)->
 	case mnesia:dirty_read(?GOUPR_MEMBER_TABLE, Gid) of
 		[] ->
 			skip;
@@ -89,13 +83,7 @@ append_user(Body)->
 			skip
 	end,
 	ok.
-remove_user(Body)->
-	Params = get_group_info(Body),
-	?DEBUG("remove_user params=~p",[Params]),
-	{ok,Gid1} = rfc4627:get_field(Params,"gid"),
-	{ok,Uid1} = rfc4627:get_field(Params,"uid"),
-	Gid = binary_to_list(Gid1),
-	Uid = binary_to_list(Uid1),
+remove_user(Gid,Uid)->
 	?DEBUG("remove user ~p from ~p", [Uid, Gid]),
 	case mnesia:dirty_read(?GOUPR_MEMBER_TABLE, Gid) of
 		[] ->
@@ -109,11 +97,7 @@ remove_user(Body)->
 	end,
 	?DEBUG("remove over", []),
 	ok.
-remove_group(Body)->
-	Params = get_group_info(Body),
-	?DEBUG("remove_group params=~p",[Params]),
-	{ok,Gid1} = rfc4627:get_field(Params,"gid"),
-	Gid = binary_to_list(Gid1),
+remove_group(Gid)->
 	mnesia:dirty_delete(?GOUPR_MEMBER_TABLE, Gid),
 	ok.
 

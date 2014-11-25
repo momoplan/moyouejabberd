@@ -84,13 +84,27 @@ handle_http(Req) ->
 				UserList = aa_session:get_user_list(Body),	
 				http_response({#success{success=true,entity=UserList},Req});
 			"remove_group" ->
-				Result = aa_group_chat:remove_group(Body),	
+				Params = get_group_info(Body),
+				?DEBUG("remove_group params=~p",[Params]),
+				{ok,Gid1} = rfc4627:get_field(Params,"gid"),
+				Gid = binary_to_list(Gid1),
+				Result = aa_group_chat:remove_group(Gid),	
 				http_response({#success{success=true,entity=Result},Req});
 			"remove_user" ->
-				Result = aa_group_chat:remove_user(Body),	
+				Params = get_group_info(Body),
+				{ok,Gid1} = rfc4627:get_field(Params,"gid"),
+				{ok,Uid1} = rfc4627:get_field(Params,"uid"),
+				Gid = binary_to_list(Gid1),
+				Uid = binary_to_list(Uid1),
+				Result = aa_group_chat:remove_user(Gid,Uid),	
 				http_response({#success{success=true,entity=Result},Req});
 			"append_user" ->
-				Result = aa_group_chat:append_user(Body),	
+				Params = get_group_info(Body),
+				{ok,Gid1} = rfc4627:get_field(Params,"gid"),
+				{ok,Uid1} = rfc4627:get_field(Params,"uid"),
+				Gid = binary_to_list(Gid1),
+				Uid = binary_to_list(Uid1),
+				Result = aa_group_chat:append_user(Gid,Uid),	
 				http_response({#success{success=true,entity=Result},Req});
 			"ack" ->
 				case rfc4627:get_field(Obj, "service") of
