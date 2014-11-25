@@ -11,8 +11,7 @@ process_counter(From) ->
 		P = rpc:call(From,erlang,whereis,[ejabberd_c2s_sup]),
 		case is_pid(P) of 
 			true ->
-				D = dict:from_list( rpc:call(From,erlang,process_info,[P]) ),
-				L = dict:fetch('links',D),
+				{links, L} = rpc:call(From,erlang,process_info,[P, links]),
 				{ok,{From,length(L)}};
 			_ ->
 				{no_ejabberd_node,From}

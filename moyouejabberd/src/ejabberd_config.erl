@@ -27,7 +27,7 @@
 -module(ejabberd_config).
 -author('alexey@process-one.net').
 
--export([start/0, load_file/1,
+-export([start/0, load_file/1, reload_config/0,
 	 add_global_option/2, add_local_option/2,
 	 get_global_option/1, get_local_option/1]).
 -export([get_vh_by_auth_method/1]).
@@ -61,6 +61,10 @@ start() ->
     %% This start time is used by mod_last:
     add_local_option(node_start, now()),
     ok.
+
+reload_config() ->
+	Config = get_ejabberd_config_path(),
+    load_file(Config).
 
 %% @doc Get the filename of the ejabberd configuration file.
 %% The filename can be specified with: erl -config "/path/to/ejabberd.cfg".

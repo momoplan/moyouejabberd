@@ -60,10 +60,14 @@ handle_http(Req) ->
 
 		case binary_to_list(M) of 
 			"message_count" ->
+				GoodNodes = lists:filter(fun(Node) ->
+												  P = rpc:call(Node,erlang,whereis,[aa_msg_statistic]),
+												  is_pid(P)
+										  end, [node()|nodes()]),
 				Datas =	[begin 
 							 {ok, Info} = rpc:call(Node,aa_msg_statistic,info,[]),
 							 {Node, Info}
-						 end || Node <- [node()|nodes()]],
+						 end || Node <- GoodNodes],
 				{ok, {Total, TotalDel, TotalToday, TotalTodayDel}} = aa_msg_statistic:info(),
 				Json = lists:map(fun({Node, {Total, TotalDel, TotalToday, TotalTodayDel}}) ->
 										 {obj, [{node, Node},
@@ -88,6 +92,22 @@ handle_http(Req) ->
 			"append_user" ->
 				Result = aa_group_chat:append_user(Body),	
 				http_response({#success{success=true,entity=Result},Req});
+			"ack" ->
+				case rfc4627:get_field(Obj, "service") of
+					{ok,<<"emsg_bridge">>} ->
+						Result = aa_bridge:ack(Body),
+						http_response({#success{success=true,entity=Result},Req});
+					_ ->
+						http_response({#success{success=false,entity=list_to_binary("method undifine")},Req})
+				end;
+			"route" ->
+				case rfc4627:get_field(Obj, "service") of
+					{ok,<<"emsg_bridge">>} ->
+						Result = aa_bridge:route(Body),
+						http_response({#success{success=true,entity=Result},Req});
+					_ ->
+						http_response({#success{success=false,entity=list_to_binary("method undifine")},Req})
+				end;
 			_ ->
 				http_response({#success{success=false,entity=list_to_binary("method undifine")},Req})
 		end

@@ -1,8 +1,7 @@
--module(aa_group_chat).
+-module(aa_group_chat_old).
 
 -include("ejabberd.hrl").
 -include("jlib.hrl").
--include("aa_data.hrl").
 
 -behaviour(gen_server).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
@@ -18,9 +17,7 @@
 	is_group_chat/1,
 	append_user/1,
 	remove_user/1,
-	remove_group/1,
-	reload_group_members/0
-%% 	reload_group_members_local/0
+	remove_group/1
 ]).
 
 -record(state, { ecache_node, ecache_mod=ecache_server, ecache_fun=cmd }).
@@ -28,37 +25,11 @@
 start() ->
 	aa_group_chat_sup:start_child().
 
+stop(Pid)->
+	gen_server:cast(Pid,stop).
 
 start_link() ->
 	gen_server:start_link(?MODULE,[],[]).
-
-
-%% reload_group_members() ->
-%% 	[reload_group_members(Node) || Node <- [node()|nodes()]].
-%% 
-%% reload_group_members(Node) ->
-%% 	spawn(fun() ->
-%% 				  rpc:call(Node, aa_group_chat, reload_group_members_local, [])
-%% 		  end).
-
-reload_group_members() ->
-	GroupIds = mnesia:dirty_all_keys(?GOUPR_MEMBER_TABLE),
-	[Domain|_] = ?MYHOSTS, 
-	F = fun(GroupId) ->
-			case get_user_list_by_group_id(Domain,GroupId) of 
-				{ok,UserList} ->
-					UserList1 = [binary_to_list(Usr) || Usr <- UserList],
-					Data = #group_members{gid = GroupId, members = UserList1},
-					mnesia:dirty_write(?GOUPR_MEMBER_TABLE, Data),
-					?DEBUG("###### get_user_list_by_group_id_http :::> GroupId=~p ; Roster=~p",[GroupId,UserList]),
-					{ok,UserList};
-				Err ->
-					?ERROR_MSG("ERROR=~p",[Err]),
-					mnesia:dirty_delete(?GOUPR_MEMBER_TABLE, GroupId),
-					error
-			end
-	end,
-	lists:foreach(F, GroupIds).
 
 route_group_msg(From,To,Packet)->
 	{ok,Pid} = start(),
@@ -68,110 +39,109 @@ route_group_msg(From,To,Packet)->
 %% {"service":"group_chat","method":"remove_user","params":{"domain":"test.com","gid":"123123","uid":"123123"}}
 %% "{\"method\":\"remove_user\",\"params\":{\"domain\":\"test.com\",\"gid\":\"123123\",\"uid\":\"123123\"}}"
 append_user(Body)->
-	Params = get_group_info(Body),
-	?DEBUG("append_user params=~p",[Params]),
-	{ok,Gid1} = rfc4627:get_field(Params,"gid"),
-	{ok,Uid1} = rfc4627:get_field(Params,"uid"),
-	Gid = binary_to_list(Gid1),
-	Uid = binary_to_list(Uid1),
-	case mnesia:dirty_read(?GOUPR_MEMBER_TABLE, Gid) of
-		[] ->
-			skip;
-		[#group_members{members = Members}] ->
-			case lists:member(Uid, Members) of
-				true ->
-					skip;
-				false ->					
-					NewMembers = [Uid|Members],
-					mnesia:dirty_write(?GOUPR_MEMBER_TABLE, #group_members{gid = Gid, members = NewMembers})
-			end;
-		_ ->
-			skip
-	end,
-	ok.
-remove_user(Body)->
-	Params = get_group_info(Body),
-	?DEBUG("remove_user params=~p",[Params]),
-	{ok,Gid1} = rfc4627:get_field(Params,"gid"),
-	{ok,Uid1} = rfc4627:get_field(Params,"uid"),
-	Gid = binary_to_list(Gid1),
-	Uid = binary_to_list(Uid1),
-	?DEBUG("remove user ~p from ~p", [Uid, Gid]),
-	case mnesia:dirty_read(?GOUPR_MEMBER_TABLE, Gid) of
-		[] ->
-			skip;
-		[#group_members{members = Members}] ->
-			NewMembers = lists:delete(Uid, Members),
-			?DEBUG("remove sucess", []),
-			mnesia:dirty_write(?GOUPR_MEMBER_TABLE, #group_members{gid = Gid, members = NewMembers});
-		_ ->
-			skip
-	end,
-	?DEBUG("remove over", []),
-	ok.
-remove_group(Body)->
-	Params = get_group_info(Body),
-	?DEBUG("remove_group params=~p",[Params]),
-	{ok,Gid1} = rfc4627:get_field(Params,"gid"),
-	Gid = binary_to_list(Gid1),
-	mnesia:dirty_delete(?GOUPR_MEMBER_TABLE, Gid),
-	ok.
-
-get_group_info(Body) ->
+	{ok,Pid} = start(),
+	?DEBUG("append_user body=~p",[Body]),
 	{ok,Obj,_Re} = rfc4627:decode(Body),
 	{ok,Params} = rfc4627:get_field(Obj,"params"),
-	Params.
+	{ok,Domain} = rfc4627:get_field(Params,"domain"),
+	{ok,Gid} = rfc4627:get_field(Params,"gid"),
+	{ok,Uid} = rfc4627:get_field(Params,"uid"),
+	Key = binary_to_list(Gid)++"@group."++binary_to_list(Domain),
+	case gen_server:call(Pid,{ecache_cmd,["ZCARD",Key]}) of 
+		[<<"0">>] ->
+			skip;
+		_ ->
+			gen_server:call(Pid,{ecache_cmd,["ZADD",Key,index_score(),Uid]})
+	end,	
+	stop(Pid),
+	ok.
+remove_user(Body)->
+	{ok,Pid} = start(),
+	?DEBUG("remove_user body=~p",[Body]),
+	{ok,Obj,_Re} = rfc4627:decode(Body),
+	{ok,Params} = rfc4627:get_field(Obj,"params"),
+	{ok,Domain} = rfc4627:get_field(Params,"domain"),
+	{ok,Gid} = rfc4627:get_field(Params,"gid"),
+	{ok,Uid} = rfc4627:get_field(Params,"uid"),
+	Key = binary_to_list(Gid)++"@group."++binary_to_list(Domain),
+	case gen_server:call(Pid,{ecache_cmd,["ZCARD",Key]}) of 
+		[<<"0">>] ->
+			skip;
+		_ ->
+			gen_server:call(Pid,{ecache_cmd,["ZREM",Key,Uid]})
+	end,	
+	stop(Pid),
+	ok.
+remove_group(Body)->
+	{ok,Pid} = start(),
+	?DEBUG("remove_group body=~p",[Body]),
+	{ok,Obj,_Re} = rfc4627:decode(Body),
+	{ok,Params} = rfc4627:get_field(Obj,"params"),
+	{ok,Domain} = rfc4627:get_field(Params,"domain"),
+	{ok,Gid} = rfc4627:get_field(Params,"gid"),
+	Key = binary_to_list(Gid)++"@group."++binary_to_list(Domain),
+	gen_server:call(Pid,{ecache_cmd,["DEL",Key]}), 
+	stop(Pid),
+	ok.
 
 %% ====================================================================
 %% Behavioural functions 
 %% ====================================================================
 init([]) ->
-	{ok, #state{}}.
+	Conn = conn_ecache_node(),
+	{ok,_,Node} = Conn,
+	{ok, #state{ecache_node=Node}}.
 
-handle_call(_Requset,_From, State) ->
-	{reply,ok,State}.
+handle_call({ecache_cmd,Cmd},_From, State) ->
+	?DEBUG("##### ecache_cmd_on_group_chat_mod :::> Cmd=~p",[Cmd]),
+	{reply,ecache_cmd(Cmd,State),State}.
 
-handle_cast({route_group_msg,#jid{server=Domain,user=FU}=From,#jid{user=GroupId},Packet}, State) ->
-	Result =
-		case mnesia:dirty_read(?GOUPR_MEMBER_TABLE, GroupId) of
-			[] ->
-				case get_user_list_by_group_id(Domain,GroupId) of 
-					{ok,UserList} ->
-						UserList1 = [binary_to_list(Usr) || Usr <- UserList],
-						Data = #group_members{gid = GroupId, members = UserList1},
-						mnesia:dirty_write(?GOUPR_MEMBER_TABLE, Data),
-						?DEBUG("###### get_user_list_by_group_id_http :::> GroupId=~p ; Roster=~p",[GroupId,UserList]),
-						{ok,UserList1};
-					Err ->
-						?ERROR_MSG("ERROR=~p",[Err]),
-						error
-				end;
-			[#group_members{members = Members}] ->
-				{ok,Members};
-			
-			_ ->
-				error
-		end,
+handle_cast({route_group_msg,#jid{server=Domain,user=FU}=From,#jid{user=GroupId}=To,Packet}, State) ->
+	%% 如果关闭组的cache那么就不保存组信息
+	Disable_group_cache =  ejabberd_config:get_local_option({disable_group_cache,Domain}),
+	Key = GroupId++"@group."++Domain,
+	?DEBUG("###### get_user_list_by_group_id_key :::> key=~p ; disable_group_cache=~p",[Key,Disable_group_cache]),
+	Result = case ecache_cmd(["ZCARD",Key],State) of
+		[<<"0">>] ->
+			case get_user_list_by_group_id(Domain,GroupId) of 
+				{ok,UserList} ->
+					%% -record(jid, {user, server, resource, luser, lserver, lresource}).
+					RList = lists:map(fun(User)-> 
+						UID = binary_to_list(User), 
+						case Disable_group_cache of
+							true ->
+								disabled;
+							_ ->
+								Rss = ecache_cmd(["ZADD",Key,index_score(),UID],State),
+								?DEBUG("###### add_to_cache :::> Key=~p ; UID=~p ; Rss=~p",[Key,UID,Rss])
+						end,
+						UID
+					end,UserList),
+					?DEBUG("###### get_user_list_by_group_id_http :::> GroupId=~p ; Roster=~p",[GroupId,RList]),
+					{ok,UserList};
+				Err ->
+					?ERROR_MSG("ERROR=~p",[Err]),
+					error
+			end;
+		[BN] ->
+			?DEBUG("###### get_user_list_by_group_id_cache_n=~p",[BN]),
+			RList = ecache_cmd(["ZRANGE",Key,"0","-1"],State), 
+			?DEBUG("###### get_user_list_by_group_id_cache :::> GroupId=~p ; Roster=~p",[GroupId,RList]),
+			{ok,RList} 
+	end,
 	case Result of
 		{ok,Res} ->
-			case lists:member(FU,Res) of
+			case lists:member(list_to_binary(FU),Res) of
 				true->
 					%% -record(jid, {user, server, resource, luser, lserver, lresource}).
-					Roster = [begin 
-								  case is_list(User) of
-									  true ->
-										  UID = User;
-									  false ->
-										  UID = binary_to_list(User)
-								  end,
-								  #jid{user=UID,server=Domain,luser=UID,lserver=Domain,resource=[],lresource=[]}
-							  end || User <- Res],
+					Roster = lists:map(fun(User)-> 
+						UID = binary_to_list(User),
+						#jid{user=UID,server=Domain,luser=UID,lserver=Domain,resource=[],lresource=[]} 
+					end,Res),
 					?DEBUG("###### route_group_msg 002 :::> GroupId=~p ; Roster=~p",[GroupId,Roster]),
-					lists:foreach(fun(Target) ->
-										  spawn(fun()-> route_msg(From,Target,Packet,GroupId) end)
-								  end,Roster);
+					lists:foreach(fun(Target)-> route_msg(From,Target,Packet,GroupId) end,Roster);
 				_ ->
-					?ERROR_MSG("from_user_not_in_group id=~p ; from_user=~p",[GroupId,FU]), 
+					?ERROR_MSG("from_user_not_in_group Key=~p ; from_user=~p",[Key,FU]), 
 					error
 			end;
 		_ ->
@@ -181,33 +151,14 @@ handle_cast({route_group_msg,#jid{server=Domain,user=FU}=From,#jid{user=GroupId}
 handle_cast(stop, State) ->
 	{stop, normal, State}.
 
-handle_info(_Info, State) ->
-    {noreply, State}.
+handle_info({cmd,Args},State)->
+	{noreply,State}.
 
-
-%% terminate/2
-%% ====================================================================
-%% @doc <a href="http://www.erlang.org/doc/man/gen_server.html#Module:terminate-2">gen_server:terminate/2</a>
--spec terminate(Reason, State :: term()) -> Any :: term() when
-	Reason :: normal
-			| shutdown
-			| {shutdown, term()}
-			| term().
-%% ====================================================================
-terminate(_Reason, _State) ->
+terminate(Reason, State) ->
     ok.
-
-
-%% code_change/3
-%% ====================================================================
-%% @doc <a href="http://www.erlang.org/doc/man/gen_server.html#Module:code_change-3">gen_server:code_change/3</a>
--spec code_change(OldVsn, State :: term(), Extra :: term()) -> Result when
-	Result :: {ok, NewState :: term()} | {error, Reason :: term()},
-	OldVsn :: Vsn | {down, Vsn},
-	Vsn :: term().
-%% ====================================================================
-code_change(_OldVsn, State, _Extra) ->
+code_change(OldVsn, State, Extra) ->
     {ok, State}.
+
 %% ====================================================================
 %% Internal functions
 %% ====================================================================
@@ -300,3 +251,20 @@ is_group_chat(#jid{server=Domain}=To)->
 	?DEBUG("##### is_group_chat ::::>To~p ; Rtn=~p",[To,Rtn]),
 	Rtn.
 
+
+conn_ecache_node() ->
+	try 
+		[Domain|_] = ?MYHOSTS, 
+		N = ejabberd_config:get_local_option({ecache_node,Domain}), 
+		{ok,net_adm:ping(N),N} 
+	catch E:I -> 
+		Err = erlang:get_stacktrace(), 
+		log4erl:error("error ::::> E=~p ; I=~p~n Error=~p",[E,I,Err]), 
+		{error,E,I} 
+	end.  
+
+ecache_cmd(Cmd,#state{ecache_node=Node,ecache_mod=Mod,ecache_fun=Fun}=State) ->
+	rpc:call(Node,Mod,Fun,[{Cmd}]).
+
+
+index_score()-> {M,S,T} = now(), erlang:integer_to_list(M*1000000000000+S*1000000+T).

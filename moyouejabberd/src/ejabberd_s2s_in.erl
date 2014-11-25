@@ -59,8 +59,8 @@
 -define(PKIXEXPLICIT, 'OTP-PKIX').
 -define(PKIXIMPLICIT, 'OTP-PKIX').
 -else.
--include_lib("ssl/include/PKIX1Explicit88.hrl").
--include_lib("ssl/include/PKIX1Implicit88.hrl").
+-include_lib("public_key/include/public_key.hrl").
+-include_lib("public_key/include/OTP-PUB-KEY.hrl").
 -define(PKIXEXPLICIT, 'PKIX1Explicit88').
 -define(PKIXIMPLICIT, 'PKIX1Implicit88').
 -endif.

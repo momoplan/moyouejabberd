@@ -33,10 +33,12 @@
 
 start() ->
     %%ejabberd_cover:start(),
+	application:start(emysql),
     application:start(ejabberd).
 
 stop() ->
-    application:stop(ejabberd).
+    application:stop(ejabberd),
+	application:stop(emysql).
     %%ejabberd_cover:stop().
 
 get_so_path() ->
