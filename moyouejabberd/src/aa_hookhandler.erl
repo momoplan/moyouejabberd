@@ -553,13 +553,14 @@ init_mnesia_tables(State) ->
 	mnesia:create_table(dmsg,[{attributes,record_info(fields,dmsg)},{ram_copies,[node()]}]),
 	
 	%% 用户消息进程表,全节点复制
-	case mnesia:create_table(?MY_USER_MSGPID_INFO, [{attributes, record_info(fields,?MY_USER_MSGPID_INFO)}, 
-										  {ram_copies, [node()]}]) of
-		{aborted,{already_exists,_}} ->
-			mnesia:add_table_copy(?MY_USER_MSGPID_INFO, node(), ram_copies);
-		_ ->
-			skip
-	end,
+%% 放弃每个用户一个进程，这些代码无用，注释
+%% 	case mnesia:create_table(?MY_USER_MSGPID_INFO, [{attributes, record_info(fields,?MY_USER_MSGPID_INFO)}, 
+%% 										  {ram_copies, [node()]}]) of
+%% 		{aborted,{already_exists,_}} ->
+%% 			mnesia:add_table_copy(?MY_USER_MSGPID_INFO, node(), ram_copies);
+%% 		_ ->
+%% 			skip
+%% 	end,
 	
 	%% 群组信息表
 	case ejabberd_config:get_local_option({store_group_members, Domain}) of

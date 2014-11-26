@@ -32,7 +32,7 @@ join(NodeName, AffectNodes) ->
 	mnesia:change_table_copy_type(schema, node(), disc_copies),
 	[begin case net_adm:ping(Node) of
 			   pong ->
-				   rpc:call(Node, aa_usermsg_handler, refresh_bak_info, []);
+				   rpc:call(Node, aa_hookhandler, refresh_bak_info, []);
 			   _ ->
 				   skip
 		   end
