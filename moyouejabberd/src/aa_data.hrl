@@ -11,3 +11,11 @@
 
 -record(?MY_USER_TABLES, {id, msg_table, msg_list_table}).
 
+
+-define(MY_USER_MSGPID_INFO, my_user_msgpid_info).
+
+-record(?MY_USER_MSGPID_INFO, {user, pid, node}).
+
+
+-define(DB, my_db_conn).
+

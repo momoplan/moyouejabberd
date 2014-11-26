@@ -11,7 +11,6 @@
 
 -include("jlib.hrl").
 -include("ejabberd.hrl").
--include("dbconfig.hrl").
 
 -record(session, {sid, usr, us, priority, info}).
 
@@ -74,7 +73,6 @@ clean_user_msg(Uid, Domain) ->
 
 
 init([]) ->
-	emysql:add_pool(?DB, ConnectNum, User, Password, Host, Port, DB, Encode),
 	Timer = erlang:send_after(?CLEAN_CYCLE, self(), ?CLEAN_MSG),
 
     {ok, #state{clean_timer = Timer}}.
@@ -161,7 +159,7 @@ clean_user_msg([Jid|RestUser]) ->
 		online ->
 			skip;
 		offline ->
-			mysql_msg_driver:dump(Jid)
+			aa_usermsg_handler:dump(Jid)
 	end,
 	clean_user_msg(RestUser).
 	

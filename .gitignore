@@ -8,3 +8,13 @@ ebin
 rel/example_project
 .concrete/DEV_MODE
 .rebar
+
+.metadata/*
+
+*.log
+*.lck
+
+*.prefs
+
+
+*.dump

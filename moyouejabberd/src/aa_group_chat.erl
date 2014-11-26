@@ -16,8 +16,8 @@
 	start_link/0,
 	route_group_msg/3,
 	is_group_chat/1,
-	append_user/1,
-	remove_user/1,
+	append_user/2,
+	remove_user/2,
 	remove_group/1,
 	reload_group_members/0
 %% 	reload_group_members_local/0
@@ -100,11 +100,6 @@ remove_user(Gid,Uid)->
 remove_group(Gid)->
 	mnesia:dirty_delete(?GOUPR_MEMBER_TABLE, Gid),
 	ok.
-
-get_group_info(Body) ->
-	{ok,Obj,_Re} = rfc4627:decode(Body),
-	{ok,Params} = rfc4627:get_field(Obj,"params"),
-	Params.
 
 %% ====================================================================
 %% Behavioural functions 

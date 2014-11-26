@@ -18,83 +18,115 @@
 %% ====================================================================
 %% API functions
 %% ====================================================================
--export([start_link/0,
+-export([start_link/1,
 		 store_msg/4,
 		 del_msg/2,
-		 refresh_bak_info/0,
 		 message_status_info/0,
-		 test_cfg/0,
 		 get_offline_msg/2]).
+
+-export([dump/1,
+		load/1]).
 
 -export([delete_msg_by_from/1,
 		 delete_msg_by_from/2,
 		 delete_msg_by_from1/1]).
 
-refresh_bak_info() ->
-	gen_server:call(?MODULE, refresh_bak).
+dump(Jid) ->
+	{Pid, Node} = get_userpid(Jid),
+	gen_server:call({Pid, Node}, {dump, Jid}).
 
-test_cfg() ->
-	gen_server:call(?MODULE, test_cfg).
+load(Jid) ->
+	{Pid, Node} = get_userpid(Jid),
+	gen_server:call({Pid, Node}, {load, Jid}).
 
-start_link() ->
-	gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
+start_link(Jid) ->
+	case supervisor:start_child(my_usermsg_pid_sup, {aa_usermsg_handler, 
+												{aa_usermsg_handler, start_link, [Jid]}, 
+												permanent, 
+												3000, 
+												worker, 
+												[aa_usermsg_handler]}) of
+		{ok, Pid} ->
+			{ok, Pid};
+		{ok, Pid, _} ->
+			{ok, Pid};
+		_ ->
+			throw(fail_to_start_user_msg_pid)
+	end.
 
 store_msg(Key, From, To, Packet) ->
-	?INFO_MSG("aa user msg rcv store msg call ~p", [{Key, From, To, Packet}]),	
-	store_message(Key, format_user_data(From), format_user_data(To), Packet),
-	aa_msg_statistic:add(),
-	?INFO_MSG("store msg finish", []).
+	{Pid, Node} = get_userpid(To),
+	gen_server:call({Pid, Node}, {store_msg, Key, format_user_data(From), format_user_data(To), Packet}),	
+	aa_msg_statistic:add().
 
 del_msg(Key, UserJid1) ->
-	?INFO_MSG("aa user msg rcv del msg call ~p", [Key]),
-	delete_message(Key,format_user_data(UserJid1)),
-	aa_msg_statistic:del(),
-	?INFO_MSG("del msg finish", []).
+	{Pid, Node} = get_userpid(UserJid1),
+	gen_server:call({Pid, Node}, {del_msg, Key,format_user_data(UserJid1)}),
+	aa_msg_statistic:del().
 
 get_offline_msg(Range, UserJid1) ->
-	UserJid = format_user_data(UserJid1),
-	#?MY_USER_TABLES{msg_table = TableName, msg_list_table = RamMsgListTableName} =
-		 get_user_tables(UserJid),
-	Msgs = 
-		case mnesia:dirty_read(RamMsgListTableName, UserJid) of
-			[] ->
-				[];
-			[#user_msg_list{msg_list = []}] ->
-				[];
-			[#user_msg_list{msg_list = KeysList} = UM] ->
-				AvaliableList 
-					= lists:filter(fun(Key) ->
-										   case mnesia:dirty_read(TableName, Key) of
-											   [_] ->
-												   true;
-											   _ ->
-												   false
-										   end 
-								   end, KeysList),
-				mnesia:dirty_write(RamMsgListTableName, UM#user_msg_list{msg_list = AvaliableList}),
-				TotalCount = length(AvaliableList),
-				
-				if TotalCount > Range andalso Range /=0 ->
-					   MsgsIds = lists:sublist(AvaliableList, Range);
-				   true ->
-					   MsgsIds = AvaliableList
-				end,
-				?INFO_MSG("aa usermsg offline ids ~p", [MsgsIds]),
-				%% 保证有消息，保证是倒序的
-				lists:foldl(fun(Key, MList) ->
-									case mnesia:dirty_read(TableName, Key) of
-											[M] ->
-												[M|MList];
-											_ ->
-												MList
-										end
-							end, [], MsgsIds);
-			_ ->
-				[]
-		end,
-	?INFO_MSG("mnesia:dirty_read(~p, ~p)", [RamMsgListTableName, UserJid]),
-	?INFO_MSG("user ~p offline msg ~p",[UserJid, Msgs]),
-	{ok, Msgs}.
+	load(UserJid1),
+	{Pid, Node} = get_userpid(UserJid1),
+	get_server:call({Pid, Node}, {get_offline_msg, Range, format_user_data(UserJid1)}).
+	
+	
+
+%% store_msg(Key, From, To, Packet) ->
+%% 	?INFO_MSG("aa user msg rcv store msg call ~p", [{Key, From, To, Packet}]),	
+%% 	store_message(Key, format_user_data(From), format_user_data(To), Packet),
+%% 	aa_msg_statistic:add(),
+%% 	?INFO_MSG("store msg finish", []).
+%% 
+%% del_msg(Key, UserJid1) ->
+%% 	?INFO_MSG("aa user msg rcv del msg call ~p", [Key]),
+%% 	delete_message(Key,format_user_data(UserJid1)),
+%% 	aa_msg_statistic:del(),
+%% 	?INFO_MSG("del msg finish", []).
+%% 
+%% get_offline_msg(Range, UserJid1) ->
+%% 	UserJid = format_user_data(UserJid1),
+%% 	#?MY_USER_TABLES{msg_table = TableName, msg_list_table = RamMsgListTableName} =
+%% 		 get_user_tables(UserJid),
+%% 	Msgs = 
+%% 		case mnesia:dirty_read(RamMsgListTableName, UserJid) of
+%% 			[] ->
+%% 				[];
+%% 			[#user_msg_list{msg_list = []}] ->
+%% 				[];
+%% 			[#user_msg_list{msg_list = KeysList} = UM] ->
+%% 				AvaliableList 
+%% 					= lists:filter(fun(Key) ->
+%% 										   case mnesia:dirty_read(TableName, Key) of
+%% 											   [_] ->
+%% 												   true;
+%% 											   _ ->
+%% 												   false
+%% 										   end 
+%% 								   end, KeysList),
+%% 				mnesia:dirty_write(RamMsgListTableName, UM#user_msg_list{msg_list = AvaliableList}),
+%% 				TotalCount = length(AvaliableList),
+%% 				
+%% 				if TotalCount > Range andalso Range /=0 ->
+%% 					   MsgsIds = lists:sublist(AvaliableList, Range);
+%% 				   true ->
+%% 					   MsgsIds = AvaliableList
+%% 				end,
+%% 				?INFO_MSG("aa usermsg offline ids ~p", [MsgsIds]),
+%% 				%% 保证有消息，保证是倒序的
+%% 				lists:foldl(fun(Key, MList) ->
+%% 									case mnesia:dirty_read(TableName, Key) of
+%% 											[M] ->
+%% 												[M|MList];
+%% 											_ ->
+%% 												MList
+%% 										end
+%% 							end, [], MsgsIds);
+%% 			_ ->
+%% 				[]
+%% 		end,
+%% 	?INFO_MSG("mnesia:dirty_read(~p, ~p)", [RamMsgListTableName, UserJid]),
+%% 	?INFO_MSG("user ~p offline msg ~p",[UserJid, Msgs]),
+%% 	{ok, Msgs}.
 
 message_status_info() ->
 	NodeNameList = atom_to_list(node()),
@@ -200,46 +232,14 @@ delete_msg_by_from1(UId) ->
 %% ====================================================================
 %% Behavioural functions 
 %% ====================================================================
--record(state, {tabel_name, msg_list_table, bak_table_name, bak_nodes}).
+-record(state, {}).
 
-init([]) ->
-	[Domain|_] = ?MYHOSTS, 
-	NodeNameList = atom_to_list(node()),
-	RamMsgTableName = list_to_atom(NodeNameList ++ "user_message"),
-	MsgCopyNodes = case ejabberd_config:get_local_option({ram_msg_bak_nodes, Domain}) of
-					   undefined ->
-						   [];
-					   N ->
-						   N
-				   end,
-	mnesia:create_table(RamMsgTableName, [{record_name, user_msg},
-										  {attributes, record_info(fields,user_msg)}, 
-										  {ram_copies, [node()]}]),
-	
-	?ERROR_MSG("local config ~p", [ets:tab2list(local_config)]),
-	
-	[begin mnesia:add_table_copy(RamMsgTableName, CopyNode, ram_copies),
-		   spawn(fun() ->
-						 net_adm:ping(CopyNode)
-				 end)
-	 end || CopyNode <- MsgCopyNodes],
-	
-	RamMsgListTableName = list_to_atom(NodeNameList ++ "user_msglist"),
-	
-	mnesia:create_table(RamMsgListTableName, [{record_name, user_msg_list},
-										  {attributes, record_info(fields,user_msg_list)}, 
-										  {ram_copies, [node()]}]),
-	
-	[mnesia:add_table_copy(RamMsgListTableName, CopyNode, ram_copies)|| CopyNode <- MsgCopyNodes],
-	
-	init_mnesia_user_table_info(Domain),
-	
-	
-	
+init([Jid]) ->
+	PidName = get_userpid_name(Jid),
+	Data = #?MY_USER_MSGPID_INFO{user = PidName, pid = self(), node = node()},
+	mnesia:transaction(fun() -> mnesia:write(?MY_USER_MSGPID_INFO, Data, write) end),
 %% 	erlang:send_after(?CHECK_EXPIRE_PERIOD, self(), ?MSG_EXPRIRE),
-    {ok, #state{tabel_name = RamMsgTableName,
-				msg_list_table = RamMsgListTableName,
-				bak_nodes = MsgCopyNodes}}.
+    {ok, #state{}}.
 
 %% handle_call({get_offline_msg, Range, UserJid}, _From, State) ->
 %% 	TableName = State#state.tabel_name,
@@ -255,21 +255,86 @@ init([]) ->
 %% 	end,
 %% 	{reply,{ok, Msgs}, State};
 
-handle_call(refresh_bak, _From, State) ->
-	ejabberd_config:reload_config(),
-	State1 = refresh_mnesia_table(State),
-	{reply, ok, State1};
+handle_call({dump, Jid}, _From, State) ->
+	ValidJid = format_user_data(Jid),
+	case mnesia:dirty_read(?MY_USER_TABLES, ValidJid) of
+		[#?MY_USER_TABLES{msg_table = TableName, msg_list_table = RamMsgListTableName}] ->
+			case mnesia:dirty_read(RamMsgListTableName, ValidJid) of
+				[#user_msg_list{msg_list = KeysList}] ->					
+					mnesia:sync_dirty(fun() -> mnesia:delete({RamMsgListTableName, ValidJid}) end),
+					AvaliableList 
+						= lists:filter(fun(Key) ->
+											   case mnesia:dirty_read(TableName, Key) of
+												   [_] ->
+													   true;
+												   _ ->
+													   false
+											   end 
+									   end, KeysList),
+					write_messages_to_sql(Jid, AvaliableList);
+				_ ->
+					skip
+			end;	
+		_ ->
+			skip
+	end,
+	{reply, ok, State};
 
-handle_call(test_cfg, _From, State) ->
-	ejabberd_config:reload_config(),
-	[Domain|_] = ?MYHOSTS,
-	MsgCopyNodes = case ejabberd_config:get_local_option({mysql_config, Domain}) of
-					   undefined ->
-						   [];
-					   N ->
-						   N
-				   end,
-	{reply, {ok, MsgCopyNodes}, State};
+handle_call({load, Jid}, _From, State) ->
+	Data = load_message_from_mysql(Jid),
+	{reply, {ok, Data}, State};
+
+handle_call({store_msg,Key, From, To, Packet}, _From, State) ->
+	store_message(Key, From, To, Packet),
+	{reply, ok, State};
+
+handle_call({store_msg, Key, UserJid}, _From, State) ->
+	delete_message(Key, UserJid),
+	{reply, ok, State};
+
+handle_call({get_offline_msg, Range, UserJid}, _From, State) ->
+	#?MY_USER_TABLES{msg_table = TableName, msg_list_table = RamMsgListTableName} =
+		 get_user_tables(UserJid),
+	Msgs = 
+		case mnesia:dirty_read(RamMsgListTableName, UserJid) of
+			[] ->
+				[];
+			[#user_msg_list{msg_list = []}] ->
+				[];
+			[#user_msg_list{msg_list = KeysList} = UM] ->
+				AvaliableList 
+					= lists:filter(fun(Key) ->
+										   case mnesia:dirty_read(TableName, Key) of
+											   [_] ->
+												   true;
+											   _ ->
+												   false
+										   end 
+								   end, KeysList),
+				mnesia:dirty_write(RamMsgListTableName, UM#user_msg_list{msg_list = AvaliableList}),
+				TotalCount = length(AvaliableList),
+				
+				if TotalCount > Range andalso Range /=0 ->
+					   MsgsIds = lists:sublist(AvaliableList, Range);
+				   true ->
+					   MsgsIds = AvaliableList
+				end,
+				?INFO_MSG("aa usermsg offline ids ~p", [MsgsIds]),
+				%% 保证有消息，保证是倒序的
+				lists:foldl(fun(Key, MList) ->
+									case mnesia:dirty_read(TableName, Key) of
+											[M] ->
+												[M|MList];
+											_ ->
+												MList
+										end
+							end, [], MsgsIds);
+			_ ->
+				[]
+		end,
+	?INFO_MSG("mnesia:dirty_read(~p, ~p)", [RamMsgListTableName, UserJid]),
+	?INFO_MSG("user ~p offline msg ~p",[UserJid, Msgs]),
+	{reply, {ok, Msgs}, State};
 
 handle_call(_Request, _From, State) ->
     Reply = ok,
@@ -313,69 +378,8 @@ handle_info(_Info, State) ->
 terminate(_Reason, _State) ->
     ok.
 
-
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
-
-
-
-refresh_mnesia_table(#state{tabel_name = RamMsgTableName,
-							msg_list_table = RamMsgListTableName,
-							bak_nodes = OldMsgCopyNodes} = State) ->
-	[Domain|_] = ?MYHOSTS,
-	MsgCopyNodes = case ejabberd_config:get_local_option({ram_msg_bak_nodes, Domain}) of
-					   undefined ->
-						   [];
-					   N ->
-						   N
-				   end,
-	{AddNodes, DelNodes} = lists:foldl(fun(Node, {ANodes, DNodes}) ->
-											   case lists:member(Node, DNodes) of
-												   true ->
-													   ANodes1 = ANodes,
-													   DNodes1 = lists:delete(Node, DNodes);
-												   false ->
-													   ANodes1 = [Node|ANodes],
-													   DNodes1 = DNodes
-											   end,
-											   {ANodes1, DNodes1}
-									   end, {[], OldMsgCopyNodes}, MsgCopyNodes),
-	
-	%% 删除表复制
-	[begin mnesia:del_table_copy(RamMsgTableName, CopyNode),
-		   spawn(fun() ->
-						 net_adm:ping(CopyNode)
-				 end)
-	 end || CopyNode <- DelNodes],
-	[mnesia:del_table_copy(RamMsgListTableName, CopyNode)|| CopyNode <- DelNodes],
-	
-	%% 添加表复制
-	[begin mnesia:add_table_copy(RamMsgTableName, CopyNode, ram_copies),
-		   spawn(fun() ->
-						 net_adm:ping(CopyNode)
-				 end)
-	 end || CopyNode <- AddNodes],
-	
-	[mnesia:add_table_copy(RamMsgListTableName, CopyNode, ram_copies)|| CopyNode <- AddNodes],
-	State#state{bak_nodes = MsgCopyNodes}.
-	
-
-init_mnesia_user_table_info(Domain) ->
-	case ejabberd_config:get_local_option({store_user_tables_info, Domain}) of
-		1 ->
-			create_or_copy_table(?MY_USER_TABLES, [{attributes, record_info(fields,?MY_USER_TABLES)}, 
-												   {ram_copies, [node()]}], ram_copies);
-		_ ->
-			skip
-	end.
-
-create_or_copy_table(TableName, Opts, Copy) ->
-	case mnesia:create_table(TableName, Opts) of
-		{aborted,{already_exists,_}} ->
-			mnesia:add_table_copy(TableName, node(), Copy);
-		_ ->
-			skip
-	end.
 
 get_user_tables(UserJid) ->
 	case mnesia:dirty_read(?MY_USER_TABLES, UserJid) of
@@ -429,6 +433,17 @@ store_message(Key, From, To, Packet) ->
 	?INFO_MSG("storem msg update list ~p", [NewListData]),
 	mnesia:dirty_write(ListTableName, NewListData).
 
+%% store_message(Key, From, To, Packet, TimeStamp) ->
+%% 	#?MY_USER_TABLES{msg_table = TableName} = get_user_tables(To),
+%% 	Data = #user_msg{id = Key, 
+%% 					 from = From, 
+%% 					 to = To, 
+%% 					 packat = Packet, 
+%% 					 timestamp = TimeStamp, 
+%% 					 expire_time = 0,
+%% 					 score = index_score()},	
+%% 	mnesia:dirty_write(TableName, Data).
+
 delete_message(Key, UserJid) ->
 	#?MY_USER_TABLES{msg_table = TableName, msg_list_table = ListTableName} =
 		 get_user_tables(UserJid),
@@ -448,3 +463,101 @@ delete_message(Key, UserJid) ->
 
 format_user_data(Jid) ->
 	Jid#jid{resource = [], lresource = []}.
+
+
+get_userpid_name(#jid{user = Uid, server = Domain}) ->
+	list_to_atom(Uid ++ "@" ++ Domain).
+
+get_userpid(Jid) ->
+	PidName = get_userpid_name(Jid),
+	case mnesia:dirty_read(?MY_USER_MSGPID_INFO, PidName) of
+		[#?MY_USER_MSGPID_INFO{pid = Pid, node = Node}] ->
+			case rpc:call(Node, erlang, is_process_alive, Pid) of
+				true ->
+					{Pid, Node};
+				_ ->
+					mnesia:sync_dirty(fun() -> mnesia:delete({?MY_USER_MSGPID_INFO, PidName}) end),
+					{ok, Pid1} = start_link(Jid),
+					{Pid1, node()}
+			end;
+		_ ->
+			{ok, Pid1} = start_link(Jid),
+			{Pid1, node()}
+	end.
+
+load_message_from_mysql(Jid) ->
+	Name = get_userpid_name(Jid),
+	ValidJid = format_user_data(Jid),
+	#?MY_USER_TABLES{msg_table = TableName, msg_list_table = ListTableName} =
+		 get_user_tables(Jid),
+	Sql = io_lib:format("select * from messages where jid='~s' order by id",[Name]),
+	F = fun([_Id, _JId, Content, TimeStamp], KList) ->
+				%%Jid1 = binary_to_term(JId),
+				{Key, From, To, Packet} = binary_to_term(Content),
+				Data = #user_msg{id = Key, 
+								 from = From, 
+								 to = To, 
+								 packat = Packet, 
+								 timestamp = TimeStamp, 
+								 expire_time = 0,
+								 score = index_score()},	
+				mnesia:dirty_write(TableName, Data),
+				[Key|KList]
+		end,
+	case db_sql:get_all(Sql) of
+		[] ->
+			LoadKeyList = [],
+			ok;
+		DataList when is_list(DataList) ->
+			KList1 = lists:foldl(F, [], DataList),
+			LoadKeyList = lists:reverse(KList1),
+			ok
+	end,
+	case mnesia:dirty_read(ListTableName, ValidJid) of
+		[#user_msg_list{msg_list = MList} = Data] ->
+			mnesia:dirty_write(ListTableName, Data#user_msg_list{msg_list = MList ++ LoadKeyList});
+		_ ->
+			if LoadKeyList == [] ->
+				   skip;
+			   true ->
+				   NewData = #user_msg_list{id = ValidJid, msg_list = LoadKeyList},
+				   mnesia:dirty_write(ListTableName, NewData)
+			end
+	end.
+
+write_messages_to_sql(_Jid, [])->
+	ok;
+write_messages_to_sql(Jid, KeyList) ->
+	Name = get_userpid_name(Jid),
+	#?MY_USER_TABLES{msg_table = TableName} = get_user_tables(Jid),
+	Count = length(KeyList),
+	if Count > 50 ->
+		   {WriteList, Rest} = lists:split(50, KeyList);
+	   true ->
+		   WriteList = KeyList,
+		   Rest = []
+	end,
+	F = fun(#user_msg{id = Key, from = From, to = To, packat = Packet, timestamp = TimeStamp}) ->
+				Content = term_to_binary({Key, From, To, Packet}),
+				io_lib:format("('~s', '~s', ~p)", [Name, Content, TimeStamp])
+		end,
+	Datas = [begin
+				 [Message] = mnesia:dirty_read(TableName, Key), 
+				 F(Message)
+			 end || Key <- WriteList],
+	Bodys = implode(",", Datas),
+	Sql = "insert into messages(`jid`, `content`, `createDate`)" ++ Bodys,
+	db_sql:execute(Sql),
+	write_messages_to_sql(Jid, Rest),
+	ok.
+
+%% 在List中的每两个元素之间插入一个分隔符
+implode(_S, [])->
+	[<<>>];
+implode(S, L) when is_list(L) ->
+    implode(S, L, []).
+implode(_S, [H], NList) ->
+    lists:reverse([H | NList]);
+implode(S, [H | T], NList) ->
+    L = [H| NList],
+    implode(S, T, [S | L]).
