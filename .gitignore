@@ -18,3 +18,5 @@ rel/example_project
 
 
 *.dump
+
+erlide.log.1

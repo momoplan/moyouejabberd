@@ -397,7 +397,6 @@ handle_call({sync_packet,K,From,To,Packet}, _F, State) ->
 	%% add {K,V} to zset
 	?INFO_MSG("call aa_usermsg_handler store msg", []),
 	aa_usermsg_handler:store_msg(K, From, To, RPacket),
-	log(RPacket),
 	{reply, ok, State}.
 
 
@@ -464,48 +463,6 @@ code_change(_OldVsn, State, _Extra) ->
 %% ====================================================================
 %% Internal functions
 %% ====================================================================
-
-%% {id,from,to,msgtype,body}
-log({counter,Domain,Total}) ->
-	try
-		N = ejabberd_config:get_local_option({log_node,Domain}),
-		case net_adm:ping(N) of 
-			pang -> 
-				?INFO_MSG("write_log ::::> ~p",[{counter,Domain,Total}]);
-			pong ->
-				{logbox,N}!{counter,Domain,Total}
-		end 
-	catch
-		E:I ->
-			Err = erlang:get_stacktrace(),
-			?ERROR_MSG("write_log_error ::::> E=~p ; I=~p~n Error=~p",[E,I,Err]),
-			{error,E,I}
-	end;
-log(Packet) ->
-	[Domain|_] = ?MYHOSTS, 
-	try
-		N = ejabberd_config:get_local_option({log_node,Domain}),
-		{xmlelement,"message",Attr,_} = Packet,
-		D = dict:from_list(Attr),
-		ID 	= case dict:is_key("id",D) of true-> dict:fetch("id",D); false-> "" end,
-		From 	= case dict:is_key("from",D) of true-> dict:fetch("from",D); false-> "" end,
-		To 	= case dict:is_key("to",D) of true-> dict:fetch("to",D); false-> "" end,
-		MsgType = case dict:is_key("msgtype",D) of true-> dict:fetch("msgtype",D); false-> "" end,
-		Msg 	= erlang:list_to_binary(get_text_message_from_packet(Packet)),
-		Message = {ID,From,To,MsgType,Msg},
-		case net_adm:ping(N) of 
-			pang -> 
-				?INFO_MSG("write_log ::::> ~p",[Message]),
-				Message;
-			pong ->
-				{logbox,N}!Message
-		end 
-	catch
-		E:I ->
-			Err = erlang:get_stacktrace(),
-			?ERROR_MSG("write_log_error ::::> E=~p ; I=~p~n Error=~p",[E,I,Err]),
-			{error,E,I}
-	end.
 
 ack_task({new,ID,From,To,Packet})->
         TPid = erlang:spawn(fun()-> ack_task(ID,From,To,Packet) end),
