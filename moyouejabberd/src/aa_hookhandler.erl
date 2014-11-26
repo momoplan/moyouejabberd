@@ -11,6 +11,8 @@
 
 -define(PUSH_PID_NUM, 20).
 
+-define(DBCONNNUM, 20).
+
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3,get_id/0]).
 
 %% ====================================================================
@@ -663,12 +665,19 @@ refresh_mnesia_table(#state{bak_nodes = OldMsgCopyNodes} = State) ->
 
 init_msyql_conn() ->
 	[Domain|_] = ?MYHOSTS,
-	case ejabberd_config:get_local_option({mysql_conn, Domain}) of
+	case ejabberd_config:get_local_option({mysql_config, Domain}) of
 		undefined ->
 			throw(no_mysql_connection);
-		[{ConnectNum, User, Password, Host, Port, DB, Encode}] ->			
+		DBCfg ->
+%% 			?ERROR_MSG("dbcfg ~p", [DBCfg]),
+			{_, User} = lists:keyfind(user, 1, DBCfg),
+			{_, Password} = lists:keyfind(password, 1, DBCfg),
+			{_, Host} = lists:keyfind(host, 1, DBCfg),
+			{_, DB} = lists:keyfind(db, 1, DBCfg),
+			{_, Encode} = lists:keyfind(encode, 1, DBCfg),
+			{_, Port} = lists:keyfind(port, 1, DBCfg),
 			application:start(emysql),
-			emysql:add_pool(?DB, ConnectNum, User, Password, Host, Port, DB, Encode)
+			emysql:add_pool(?DB, ?DBCONNNUM, User, Password, Host, Port, DB, Encode)
 	end.
 
 random_pushpid(Pids) ->
