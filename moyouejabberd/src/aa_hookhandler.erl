@@ -9,6 +9,8 @@
 -define(HTTP_HEAD,"application/x-www-form-urlencoded").
 -define(TIME_OUT,1000*5).
 
+-define(PUSH_PID_NUM, 20).
+
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3,get_id/0]).
 
 %% ====================================================================
@@ -344,6 +346,7 @@ user_receive_packet_handler(_JID, _From, _To, _Packet) ->
 	  ecache_node,
 	  ecache_mod=ecache_server,
 	  ecache_fun=cmd,
+	  push_pids = [],
 	  bak_nodes = []
 }).
 
@@ -374,9 +377,12 @@ init([]) ->
 	%% 初始化mnesia表
 	State1 = init_mnesia_tables(State),
 	
+	PushPids = [spawn(fun() ->
+							  local_handle_offline_message()
+					  end) || _ <- lists:duplicate(?PUSH_PID_NUM, 1)],
 	%% init_mysql_connection
 	init_msyql_conn(),
-	{ok, State1}.
+	{ok, State1#state{push_pids = PushPids}}.
 
 
 
@@ -449,6 +455,28 @@ handle_cast({server_ack,#jid{server=FD},_To,Packet},State)->
 		   skip
 	end,
 	{noreply, State};
+
+handle_cast({deal_offline_msg, From,To,Packet}, State) ->
+	case State#state.push_pids of
+		[_pid|_] ->
+			PushPids = State#state.push_pids;
+		_ ->
+			PushPids = [spawn(fun() ->
+							  local_handle_offline_message()
+					  end) || _ <- lists:duplicate(?PUSH_PID_NUM, 1)]
+	end,
+	
+	Pid = random_pushpid(PushPids),
+	
+	case is_process_alive(Pid) of
+		true ->
+			Pid ! {offline_msg, From, To, Packet},
+			{noreply, #state{push_pids = PushPids}};
+		false ->
+			NewPids = lists:delete(Pid, PushPids),
+			offline_message_hook_handler(From,To,Packet),
+			{noreply, State#state{push_pids = NewPids}}
+	end;
 handle_cast(_Msg, State) -> 
 	{noreply, State}.
 handle_info(_Info, State) ->
@@ -639,4 +667,20 @@ init_msyql_conn() ->
 		[{ConnectNum, User, Password, Host, Port, DB, Encode}] ->			
 			application:start(emysql),
 			emysql:add_pool(?DB, ConnectNum, User, Password, Host, Port, DB, Encode)
+	end.
+
+random_pushpid(Pids) ->
+	Count = length(Pids),
+	
+	{M, S, _} = os:timestamp(),
+    Time = M * 1000000 + S,
+	random:seed(Time),
+	Index = random:uniform(Count),
+	lists:nth(Index, Pids).
+
+local_handle_offline_message() ->
+	receive
+		{offline_msg, From, To, Packet} ->
+			offline_message_hook_handler(From,To,Packet),
+			local_handle_offline_message()
 	end.
