@@ -534,7 +534,8 @@ ack_task(ID,From,To,Packet)->
 		%% 2014-06-18 : 离线消息统统上桥,如果开启桥接模式
 		mnesia:dirty_delete(dmsg,ID),
 %% 		gen_server:cast(?MODULE,{offline_message,ID,From,To,Packet}),
-		offline_message_hook_handler(From,To,Packet)
+		gen_server:cast({?MODULE, deal_offline_msg, From, To, Packet})
+%% 		offline_message_hook_handler(From,To,Packet)
 	end.
 
 
