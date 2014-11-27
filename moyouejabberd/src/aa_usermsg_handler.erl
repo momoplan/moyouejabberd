@@ -25,7 +25,8 @@
 		 get_offline_msg/2]).
 
 -export([dump/1,
-		load/1]).
+		load/1,
+		 load_all/0]).
 
 -export([delete_msg_by_from/1,
 		 delete_msg_by_from/2,
@@ -67,6 +68,27 @@ load(Jid) ->
 			ok = load_message_from_mysql(Jid) 
 	end,
 	ok.
+
+load_all() ->
+	NodeNameList = atom_to_list(node()),
+	RamMsgListTableName = list_to_atom(NodeNameList ++ "user_msglist"),
+
+	UserKyes = mnesia:dirty_all_keys(RamMsgListTableName),
+	lists:foreach(fun(Key) ->
+						  case mnesia:dirty_read(RamMsgListTableName, Key) of
+							  [#user_msg_list{msg_list = []}] ->
+								  skip;
+							  [#user_msg_list{msg_list = KeysList}] ->
+								  case lists:reverse(KeysList) of
+									  [-1|_] ->%% 有一部分数据被写入数据库了					
+										  load(Key);
+									  _ ->
+										  skip
+								  end;
+							  _ ->
+								  skip
+						  end
+				  end, UserKyes).
 
 start_link(_Jid) ->
 	ok.
