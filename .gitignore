@@ -21,6 +21,4 @@ rel/example_project
 
 erlide.log.1
 
-*.2
-
-*.3
+*.log.*
