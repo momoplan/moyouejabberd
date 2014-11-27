@@ -27,6 +27,7 @@
 	 user_receive_packet_handler/4,
 	 sm_register_connection_hook_handler/3,
 	 refresh_bak_info/0,
+	 rlcfg/0,
 	 sm_remove_connection_hook_handler/3
 	]).
 
@@ -42,6 +43,9 @@ start_link() ->
 
 refresh_bak_info() ->
 	gen_server:call(?MODULE, refresh_bak).
+
+rlcfg() ->
+	gen_server:call(?MODULE, reload_config).
 
 %% Message 有时是长度大于1的列表，所以这里要遍历
 %% 如果列表中有多个要提取的关键字，我就把他们组合成一个 List
@@ -392,6 +396,10 @@ handle_call(refresh_bak, _From, State) ->
 	ejabberd_config:reload_config(),
 	State1 = refresh_mnesia_table(State),
 	{reply, ok, State1};
+
+handle_call(reload_config, _From, State) ->
+	ejabberd_config:reload_config(),
+	{reply, reload_ok, State};
 
 handle_call({sync_packet,K,From,To,Packet}, _F, State) ->
 	%% insert {K,V} 
