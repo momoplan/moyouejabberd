@@ -605,7 +605,7 @@ write_messages_to_sql(Jid, KeyList) ->
 				 F(Message)
 			 end || Key <- WriteList],
 	Bodys = implode(",", Datas),
-	Sql = "insert into messages(`jid`, `content`, `createDate`)" ++ Bodys,
+	Sql = "insert into messages(`jid`, `content`, `createDate`) values" ++ Bodys,
 	db_sql:execute(Sql),
 	write_messages_to_sql(Jid, Rest).
 
