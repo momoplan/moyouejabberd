@@ -689,8 +689,7 @@ init_msyql_conn() ->
 	end.
 
 random_pushpid(Pids) ->
-	Count = length(Pids),
-	
+	Count = length(Pids),	
 	{A, B, C} = os:timestamp(),
 	random:seed(A, B,C),
 	Index = random:uniform(Count),

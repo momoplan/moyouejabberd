@@ -123,7 +123,8 @@ get_offline_msg(Range, UserJid1) ->
 		 get_user_tables(UserJid),
 	case mnesia:dirty_read(RamMsgListTableName, UserJid) of
 		[] ->
-			{ok, []};
+			load(UserJid),
+			get_offline_msg(Range, UserJid);
 		[#user_msg_list{msg_list = []}] ->
 			{ok, []};
 		[#user_msg_list{msg_list = KeysList} = UM] ->
@@ -303,6 +304,10 @@ handle_call({dump, Jid}, _From, State) ->
 											   end 
 									   end, KeysList),
 					write_messages_to_sql(Jid, AvaliableList),
+					CleanMsgF = fun() ->
+										[mnesia:delete({TableName, Key}) || Key <- AvaliableList]
+								end,
+					mnesia:transaction(CleanMsgF),
 					F = fun() ->
 								case mnesia:dirty_read(RamMsgListTableName, ValidJid) of
 									[#user_msg_list{msg_list = KeysList1}] ->
