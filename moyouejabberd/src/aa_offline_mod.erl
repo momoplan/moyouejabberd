@@ -39,6 +39,7 @@ send_offline_msg(JID) ->
 					N when is_integer(N),N > 0 -> N; 
 					_ -> 0
 				end,
+%% 		?WARNING_MSG("user ~p avaliable to send offline msg", [User]),
 		{ok,R} = aa_usermsg_handler:get_offline_msg(Range, JID),
 		%% TODO 这里，如果发送失败了，是需要重新发送的，但是先让他跑起来
 		?INFO_MSG("@@@@ send_offline_msg :::> KEY=~p ; R.size=~p~n",[KEY,length(R)]),

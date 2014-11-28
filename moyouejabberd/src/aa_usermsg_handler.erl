@@ -141,19 +141,22 @@ del_msg(Key, UserJid1) ->
 	?INFO_MSG("del msg finish", []).
 
 get_offline_msg(Range, UserJid1) ->
+	?WARNING_MSG("get offline msg", []),
 	UserJid = format_user_data(UserJid1),
 	#?MY_USER_TABLES{msg_table = TableName, msg_list_table = RamMsgListTableName} =
 		 get_user_tables(UserJid),
 	case mnesia:dirty_read(RamMsgListTableName, UserJid) of
 		[] ->
 			%% 内存里没有任何列表的数据，这时候可以认为需要到数据库里查找一下数据
+%% 			?ERROR_MSG("possible loop 1", []),
 			load(UserJid),
 			get_offline_msg(Range, UserJid);
 		[#user_msg_list{msg_list = []}] ->
 			{ok, []};
 		[#user_msg_list{msg_list = KeysList} = UM] ->
 			case lists:reverse(KeysList) of
-				[-1|_] ->%% 有一部分数据被写入数据库了					
+				[-1|_] ->%% 有一部分数据被写入数据库了	
+%% 					?ERROR_MSG("possible loop 2", []),				
 					load(UserJid),
 					get_offline_msg(Range, UserJid);
 				_ ->
@@ -601,7 +604,8 @@ get_userpid_name(#jid{user = Uid, server = Domain}) ->
 %% 			{Pid1, node()}
 %% 	end.
 
-load_message_from_mysql(Jid) ->
+load_message_from_mysql(#jid{user = User} = Jid) ->
+	?WARNING_MSG("load message from mysql ~p", [User]),
 	Name = get_userpid_name(Jid),
 	ValidJid = format_user_data(Jid),
 	#?MY_USER_TABLES{msg_table = TableName, msg_list_table = ListTableName} =
@@ -648,12 +652,8 @@ load_message_from_mysql(Jid) ->
 						 end,
 						 mnesia:write(ListTableName, Data#user_msg_list{msg_list = MList1 ++ LoadKeyList}, write);
 					 _ ->
-						 if LoadKeyList == [] ->
-								skip;
-							true ->
-								NewData = #user_msg_list{id = ValidJid, msg_list = LoadKeyList},
-								mnesia:write(ListTableName, NewData, write)
-						 end
+						 NewData = #user_msg_list{id = ValidJid, msg_list = LoadKeyList},
+						 mnesia:write(ListTableName, NewData, write)
 				 end
 		 end,
 	mnesia:transaction(F1),
