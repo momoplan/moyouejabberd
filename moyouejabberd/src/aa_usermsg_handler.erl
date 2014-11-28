@@ -341,43 +341,33 @@ init([]) ->
 
 handle_call({dump, Jid}, _From, State) ->
 	ValidJid = format_user_data(Jid),
-	case mnesia:dirty_read(?MY_USER_TABLES, ValidJid) of
-		[#?MY_USER_TABLES{msg_table = TableName, msg_list_table = RamMsgListTableName}] ->
-			case mnesia:dirty_read(RamMsgListTableName, ValidJid) of
-				[#user_msg_list{msg_list = KeysList}] ->					
-					mnesia:transaction(fun() -> mnesia:delete({RamMsgListTableName, ValidJid}) end),
-					AvaliableList 
-						= lists:filter(fun(-1) ->
-											   false;
-										  (Key) ->
-											   case mnesia:dirty_read(TableName, Key) of
-												   [_] ->
-													   true;
-												   _ ->
-													   false
-											   end 
-									   end, KeysList),
-					write_messages_to_sql(Jid, AvaliableList),
-					CleanMsgF = fun() ->
-										[mnesia:delete({TableName, Key}) || Key <- AvaliableList],
-										case mnesia:dirty_read(RamMsgListTableName, ValidJid) of
-											[#user_msg_list{msg_list = KeysList1}] ->
-												NewMsgList = KeysList1 ++ [-1],
-												NewData = #user_msg_list{id = ValidJid, msg_list = NewMsgList},
-												mnesia:write(RamMsgListTableName, NewData, write);
-											_ ->
-												%% 如果这时候没有新的列表生成，表明这段时间没有新的消息，可以删掉用户数据表信息，留待以后重建
-											    mnesia:delete({?MY_USER_TABLES, ValidJid})
-%% 												NewMsgList = [-1]
-										end
-								end,
-					mnesia:transaction(CleanMsgF);
-				_ ->
-					skip
-			end;	
-		_ ->
-			skip
-	end,
+	F = fun() ->
+				case mnesia:dirty_read(?MY_USER_TABLES, ValidJid, write) of
+					[#?MY_USER_TABLES{msg_table = TableName, msg_list_table = RamMsgListTableName}] ->
+						case mnesia:dirty_read(RamMsgListTableName, ValidJid) of
+							[#user_msg_list{msg_list = KeysList}] ->					
+								mnesia:delete({RamMsgListTableName, ValidJid}),
+								AvaliabelMsgList
+									= lists:filtermap(fun(-1) ->
+														   false;
+													  (Key) ->
+														   case mnesia:read(TableName, Key) of
+															   [Msg] ->
+																   {true, Msg};
+															   _ ->
+																   false
+														   end 
+												   end, KeysList),
+								[mnesia:delete({TableName, Key}) || Key <- KeysList],
+								write_messages_to_sql(Jid, AvaliabelMsgList, TableName);
+							_ ->
+								skip
+						end;	
+					_ ->
+						skip
+				end
+		end,
+	mnesia:transaction(F),
 	{reply, ok, State};
 
 handle_call({load, Jid}, _From, State) ->
@@ -643,39 +633,43 @@ load_message_from_mysql(Jid) ->
 			ok
 	end,
 	F1 = fun() ->
-				case mnesia:read(ListTableName, ValidJid) of
-					[#user_msg_list{msg_list = MList} = Data] ->
-						case lists:reverse(MList) of
-							[-1|Rest] ->
-								MList1 = lists:reverse(Rest);
-							_ ->
-								MList1 = MList
-						end,
-						mnesia:write(ListTableName, Data#user_msg_list{msg_list = MList1 ++ LoadKeyList}, write);
-					_ ->
-						if LoadKeyList == [] ->
-							   skip;
-						   true ->
-							   NewData = #user_msg_list{id = ValidJid, msg_list = LoadKeyList},
-							   mnesia:write(ListTableName, NewData, write)
-						end
-				end
-		end,
+				 %% 单纯为了加个锁
+				 case mnesia:read(?MY_USER_TABLES, Jid,write) of
+					 _ ->
+						 skip
+				 end,
+				 case mnesia:read(ListTableName, ValidJid) of
+					 [#user_msg_list{msg_list = MList} = Data] ->
+						 case lists:reverse(MList) of
+							 [-1|Rest] ->
+								 MList1 = lists:reverse(Rest);
+							 _ ->
+								 MList1 = MList
+						 end,
+						 mnesia:write(ListTableName, Data#user_msg_list{msg_list = MList1 ++ LoadKeyList}, write);
+					 _ ->
+						 if LoadKeyList == [] ->
+								skip;
+							true ->
+								NewData = #user_msg_list{id = ValidJid, msg_list = LoadKeyList},
+								mnesia:write(ListTableName, NewData, write)
+						 end
+				 end
+		 end,
 	mnesia:transaction(F1),
 	Sql1 = io_lib:format("delete from messages where jid='~s'",[Name]),
 	db_sql:execute(Sql1),
 	ok.
 
-write_messages_to_sql(_Jid, [])->
+write_messages_to_sql(_Jid, [], _Tablename)->
 	ok;
-write_messages_to_sql(Jid, KeyList) ->
+write_messages_to_sql(Jid, AvaliabelMsgList, Tablename) ->
 	Name = get_userpid_name(Jid),
-	#?MY_USER_TABLES{msg_table = TableName} = get_user_tables(Jid),
-	Count = length(KeyList),
+	Count = length(AvaliabelMsgList),
 	if Count > 50 ->
-		   {WriteList, Rest} = lists:split(50, KeyList);
+		   {WriteList, Rest} = lists:split(50, AvaliabelMsgList);
 	   true ->
-		   WriteList = KeyList,
+		   WriteList = AvaliabelMsgList,
 		   Rest = []
 	end,
 	F = fun(#user_msg{id = Key, from = From, to = To, packat = Packet, timestamp = TimeStamp}) ->
@@ -689,14 +683,11 @@ write_messages_to_sql(Jid, KeyList) ->
 				Content = term_to_bitstring({Key, From, To, term_to_binary(Packet)}),
 				io_lib:format("('~s', '~s', ~p)", [Name, Content, Ts])
 		end,
-	Datas = [begin
-				 [Message] = mnesia:dirty_read(TableName, Key), 
-				 F(Message)
-			 end || Key <- WriteList],
+	Datas = [ F(Message) || Message <- WriteList],
 	Bodys = implode(",", Datas),
 	Sql = "insert into messages(`jid`, `content`, `createDate`) values" ++ Bodys,
 	db_sql:execute(Sql),
-	write_messages_to_sql(Jid, Rest).
+	write_messages_to_sql(Jid, Rest, Tablename).
 
 %% 在List中的每两个元素之间插入一个分隔符
 implode(_S, [])->
