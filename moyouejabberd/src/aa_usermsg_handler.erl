@@ -553,30 +553,28 @@ store_message(Key, From, To, Packet) ->
 %% 					 score = index_score()},	
 %% 	mnesia:dirty_write(TableName, Data).
 
-delete_message(Key, UserJid) ->
-
+delete_message(Key, UserJid) ->	
 	F = fun() ->
-		case mnesia:read(?MY_USER_TABLES, UserJid,write) of
-		[TableInfo] ->
-			#?MY_USER_TABLES{msg_table = TableName, msg_list_table = ListTableName} =TableInfo,
-			mnesia:delete({TableName, Key}),
-			case mnesia:read(ListTableName, UserJid) of
-				[#user_msg_list{msg_list = KeyList}] ->
-					case KeyList of
-						[Key|Rest] ->
-							NewListData = #user_msg_list{id = UserJid, msg_list = Rest};
-						_ ->
-							NewListData = #user_msg_list{id = UserJid, msg_list = lists:delete(Key, KeyList)}
-					end,
-					mnesia:write(ListTableName, NewListData);
-				_ ->
-					skip
-			end
-		_ ->
-			end,
-	end.
-
-
+				case mnesia:read(?MY_USER_TABLES, UserJid,write) of
+					[TableInfo] ->
+						#?MY_USER_TABLES{msg_table = TableName, msg_list_table = ListTableName} =TableInfo,
+						mnesia:delete({TableName, Key}),
+						case mnesia:read(ListTableName, UserJid) of
+							[#user_msg_list{msg_list = KeyList}] ->
+								case KeyList of
+									[Key|Rest] ->
+										NewListData = #user_msg_list{id = UserJid, msg_list = Rest};
+									_ ->
+										NewListData = #user_msg_list{id = UserJid, msg_list = lists:delete(Key, KeyList)}
+								end,
+								mnesia:write(ListTableName, NewListData);
+							_ ->
+								skip
+						end;
+					_ ->
+						skip
+				end
+		end,	
 	mnesia:transaction(F).
 
 format_user_data(Jid) ->
