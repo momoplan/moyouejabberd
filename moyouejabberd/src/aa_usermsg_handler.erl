@@ -504,8 +504,6 @@ index_score()-> {M,S,T} = now(),  M*1000000000000+S*1000000+T.
 
 
 store_message(Key, From, To, Packet) ->
-	#?MY_USER_TABLES{msg_table = TableName, msg_list_table = ListTableName} =
-		 get_user_tables(To),
 	[Domain|_] = ?MYHOSTS, 
 	OfflineExpireDays = case ejabberd_config:get_local_option({offline_expire_days, Domain}) of
 							undefined ->
@@ -523,8 +521,20 @@ store_message(Key, From, To, Packet) ->
 					 expire_time = ExpireTime,
 					 score = index_score()},
 	F = fun() ->
-				mnesia:dirty_write(TableName, Data),
-				case mnesia:dirty_read(ListTableName, To) of
+				case mnesia:read(?MY_USER_TABLES, To,write) of
+					[ #?MY_USER_TABLES{msg_table = TableName, msg_list_table = ListTableName}] ->
+						skip;
+					_ ->
+						NodeNameList = atom_to_list(node()),
+						TableName = list_to_atom(NodeNameList ++ "user_message"),			
+						ListTableName = list_to_atom(NodeNameList ++ "user_msglist"),
+						TableInfo = #?MY_USER_TABLES{id = To,
+													 msg_table = TableName, 
+													 msg_list_table = ListTableName},
+						mnesia:dirty_write(?MY_USER_TABLES, TableInfo)
+				end,
+				mnesia:write(TableName, Data, write),
+				case mnesia:read(ListTableName, To) of
 					[UserMsgList] ->
 						OldList = UserMsgList#user_msg_list.msg_list,
 						NewListData = UserMsgList#user_msg_list{msg_list = [Key|OldList]};
@@ -538,7 +548,7 @@ store_message(Key, From, To, Packet) ->
 								NewListData = #user_msg_list{id = To, msg_list = [Key, -1]}
 						end
 				end,
-				mnesia:dirty_write(ListTableName, NewListData)
+				mnesia:write(ListTableName, NewListData, write)
 		end,
 	mnesia:transaction(F).
 
