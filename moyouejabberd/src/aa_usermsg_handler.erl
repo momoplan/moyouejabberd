@@ -26,7 +26,8 @@
 
 -export([dump/1,
 		load/1,
-		 load_all/0]).
+		 load_all/0,
+		 rebuild_list_from_msg/0]).
 
 -export([delete_msg_by_from/1,
 		 delete_msg_by_from/2,
@@ -292,6 +293,36 @@ delete_msg_by_from1(UId) ->
 		_ ->
 			skip
 	end.
+
+rebuild_list_from_msg() ->
+	NodeNameList = atom_to_list(node()),
+	RamMsgTableName = list_to_atom(NodeNameList ++ "user_message"),
+	RamMsgListTableName = list_to_atom(NodeNameList ++ "user_msglist"),
+	
+%% 	ets:new(tmp_from_data, [named_table, public, set]),
+	ets:new(tmp_to_data, [named_table, public, set]),
+	Keys = mnesia:dirty_all_keys(RamMsgTableName),
+	lists:foreach(fun(Key) ->
+						  case mnesia:dirty_read(RamMsgTableName, Key) of
+							  [#user_msg{to = To} = Msg] ->
+								  case ets:lookup(tmp_to_data, To) of
+									  [] ->
+										  ets:insert(tmp_to_data, {To, [Msg]});
+									  [{To, MList}] ->
+										  ets:insert(tmp_to_data, {To, [Msg|MList]})
+								  end;
+							  _ ->
+								  skip
+						  end
+				  end, Keys),
+	
+	MsgList = [{To, lists:reverse(lists:keysort(#user_msg.timestamp, List))} || {To, List} <- ets:tab2list(tmp_to_data)],
+	
+	[begin KeysList = [Key || #user_msg{id = Key} <- MList],
+		   NewData = #user_msg_list{id = To, msg_list = KeysList},
+		   mnesia:dirty_write(RamMsgListTableName, NewData)
+	 end || {To, MList} <- MsgList],
+	ets:delete(tmp_to_data).
 
 %% ====================================================================
 %% Behavioural functions 
@@ -567,7 +598,10 @@ load_message_from_mysql(Jid) ->
 	Sql = io_lib:format("select * from messages where jid='~s' order by id",[Name]),
 	F = fun([_Id, _JId, Content, TimeStamp], KList) ->
 				%%Jid1 = binary_to_term(JId),
-				{Key, From, To, Packet} = binary_to_term(Content),
+%% 				?ERROR_MSG("~p", [Content]),
+				{Key, From, To, Packet1} = bitstring_to_term(Content),
+				Packet = binary_to_term(Packet1),
+%% 				?ERROR_MSG("Key ~p, From ~p, To ~p", [Key, From, To]),
 				Data = #user_msg{id = Key, 
 								 from = From, 
 								 to = To, 
@@ -607,7 +641,7 @@ load_message_from_mysql(Jid) ->
 				end
 		end,
 	mnesia:transaction(F1),
-	Sql1 = io_lib:format("select from messages where jid='~s'",[Name]),
+	Sql1 = io_lib:format("delete from messages where jid='~s'",[Name]),
 	db_sql:execute(Sql1),
 	ok.
 
@@ -624,8 +658,15 @@ write_messages_to_sql(Jid, KeyList) ->
 		   Rest = []
 	end,
 	F = fun(#user_msg{id = Key, from = From, to = To, packat = Packet, timestamp = TimeStamp}) ->
-				Content = term_to_binary({Key, From, To, Packet}),
-				io_lib:format("('~s', '~s', ~p)", [Name, Content, TimeStamp])
+%% 				?ERROR_MSG("time stapm ~p", [TimeStamp]),
+				case TimeStamp of
+					{datetime, _} ->
+						Ts = 0;
+					_ ->
+						Ts = TimeStamp
+				end,
+				Content = term_to_bitstring({Key, From, To, term_to_binary(Packet)}),
+				io_lib:format("('~s', '~s', ~p)", [Name, Content, Ts])
 		end,
 	Datas = [begin
 				 [Message] = mnesia:dirty_read(TableName, Key), 
@@ -650,3 +691,40 @@ implode(S, [H | T], NList) ->
 
 start(Name) ->
 	gen_server:start({local, Name}, ?MODULE, [], []).
+
+%% term序列化，term转换为bitstring格式，e.g., [{a},1] => <<"[{a},1]">>
+term_to_bitstring(Term) ->
+    erlang:list_to_bitstring(io_lib:format("~p", [Term])).
+term_to_bitstring(Term, Default) ->
+	case term_to_bitstring(Term) of
+		<<"undefined">> ->
+			Default;
+		X ->
+			X
+	end.
+
+
+%% term反序列化，string转换为term，e.g., "[{a},1]"  => [{a},1]
+string_to_term(String) ->
+    case erl_scan:string(String++".") of
+        {ok, Tokens, _} ->
+            case catch erl_parse:parse_term(Tokens) of
+                {ok, Term} -> Term;
+                _Err -> undefined
+            end;
+        _Error ->
+            undefined
+    end.
+
+bitstring_to_term(BitString, Default) ->
+	case bitstring_to_term(BitString) of
+		undefined ->
+			Default;
+		R ->
+			R
+	end.
+
+%% term反序列化，bitstring转换为term，e.g., <<"[{a},1]">>  => [{a},1]
+bitstring_to_term(undefined) -> undefined;
+bitstring_to_term(BitString) ->
+    string_to_term(binary_to_list(BitString)).

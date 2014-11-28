@@ -28,7 +28,7 @@ start_link() ->
 	gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 clean() ->
-	gen_server:call(?MODULE, clean).
+	gen_server:call(?MODULE, clean, infinity).
 
 run_all_nodes() ->
 	[ start(Node) || Node <- [node()|nodes()]].
