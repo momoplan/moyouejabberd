@@ -1,7 +1,8 @@
 -module(aa_session).
 -include_lib("stdlib/include/qlc.hrl").
+-include("jlib.hrl").
 
--export([find/1,total_count_user/1,get_user_list/1, pid_find_user/1]).
+-export([find/1,total_count_user/1,get_user_list/1, pid_find_user/1, check_online/1]).
 -record(session, {sid, usr, us, priority, info}).
 -record(session_counter, {vhost, count}).
 
@@ -43,6 +44,20 @@ pid_find_user(Pid) ->
 								 false
 						 end
 				 end,Keys).
+
+check_online(Jid) ->
+	#jid{user = User, server = Server} = Jid,
+	LUser = jlib:nodeprep(User),
+	LServer = jlib:nameprep(Server),
+	US = {LUser, LServer},
+	case catch mnesia:dirty_index_read(session, US, #session.us) of
+		{'EXIT', _Reason} ->
+			offline;
+		[] ->
+			offline;
+		_ ->
+			online
+	end.
 
 
 c2s_gc() ->

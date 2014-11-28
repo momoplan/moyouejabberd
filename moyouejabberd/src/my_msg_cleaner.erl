@@ -142,19 +142,7 @@ clean_message() ->
 clean_user_msg([]) ->
 	ok;
 clean_user_msg([Jid|RestUser]) ->
-	#jid{user = User, server = Server} = Jid,
-	LUser = jlib:nodeprep(User),
-    LServer = jlib:nameprep(Server),
-	US = {LUser, LServer},
-	Status =
-		case catch mnesia:dirty_index_read(session, US, #session.us) of
-			{'EXIT', _Reason} ->
-				offline;
-			[] ->
-				offline;
-			_ ->
-				online
-		end,
+	Status = aa_session:check_online(Jid),
 	case Status of
 		online ->
 			skip;

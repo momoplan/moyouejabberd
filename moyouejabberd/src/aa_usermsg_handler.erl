@@ -146,6 +146,7 @@ get_offline_msg(Range, UserJid1) ->
 		 get_user_tables(UserJid),
 	case mnesia:dirty_read(RamMsgListTableName, UserJid) of
 		[] ->
+			%% 内存里没有任何列表的数据，这时候可以认为需要到数据库里查找一下数据
 			load(UserJid),
 			get_offline_msg(Range, UserJid);
 		[#user_msg_list{msg_list = []}] ->
@@ -358,20 +359,19 @@ handle_call({dump, Jid}, _From, State) ->
 									   end, KeysList),
 					write_messages_to_sql(Jid, AvaliableList),
 					CleanMsgF = fun() ->
-										[mnesia:delete({TableName, Key}) || Key <- AvaliableList]
+										[mnesia:delete({TableName, Key}) || Key <- AvaliableList],
+										case mnesia:dirty_read(RamMsgListTableName, ValidJid) of
+											[#user_msg_list{msg_list = KeysList1}] ->
+												NewMsgList = KeysList1 ++ [-1],
+												NewData = #user_msg_list{id = ValidJid, msg_list = NewMsgList},
+												mnesia:write(RamMsgListTableName, NewData, write);
+											_ ->
+												%% 如果这时候没有新的列表生成，表明这段时间没有新的消息，可以删掉用户数据表信息，留待以后重建
+											    mnesia:delete({?MY_USER_TABLES, ValidJid})
+%% 												NewMsgList = [-1]
+										end
 								end,
-					mnesia:transaction(CleanMsgF),
-					F = fun() ->
-								case mnesia:dirty_read(RamMsgListTableName, ValidJid) of
-									[#user_msg_list{msg_list = KeysList1}] ->
-										NewMsgList = KeysList1 ++ [-1];
-									_ ->
-										NewMsgList = [-1]
-								end,
-								NewData = #user_msg_list{id = ValidJid, msg_list = NewMsgList},
-								mnesia:write(RamMsgListTableName, NewData, write)
-						end,
-					mnesia:transaction(F);
+					mnesia:transaction(CleanMsgF);
 				_ ->
 					skip
 			end;	
@@ -529,7 +529,14 @@ store_message(Key, From, To, Packet) ->
 						OldList = UserMsgList#user_msg_list.msg_list,
 						NewListData = UserMsgList#user_msg_list{msg_list = [Key|OldList]};
 					_ ->
-						NewListData = #user_msg_list{id = To, msg_list = [Key]}
+						%% 内存里没有消息列表
+						Status = aa_session:check_online(To),
+						case Status of
+							online -> %% 如果用户在线，则不需要到数据里拉取消息
+								NewListData = #user_msg_list{id = To, msg_list = [Key]};
+							offline ->%% 如果用户不在线，则认为很有可能数据被全部写入数据库，做个标记
+								NewListData = #user_msg_list{id = To, msg_list = [Key, -1]}
+						end
 				end,
 				mnesia:dirty_write(ListTableName, NewListData)
 		end,
