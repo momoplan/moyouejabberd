@@ -13,6 +13,8 @@
 
 -define(DBCONNNUM, 20).
 
+-define(ETS_ACK_TASK, ets_ack_task).
+
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3,get_id/0]).
 
 %% ====================================================================
@@ -26,7 +28,7 @@
 	 roster_in_subscription_handler/6,
 	 user_receive_packet_handler/4,
 	 refresh_bak_info/0,
-	 rlcfg/0,
+	 rlcfg/0
 	]).
 
 start_link() ->
@@ -70,7 +72,10 @@ get_text_message_form_packet_result( Body )->
 
 %% 离线消息处理器
 %% 钩子回调
-offline_message_hook_handler(#jid{user=FromUser}=From, #jid{server=Domain}=To, Packet) ->
+offline_message_hook_handler(From, To, Packet) ->
+	gen_server:cast(?MODULE, {deal_offline_msg, From, To, Packet}).
+
+deal_offline_msg(From, To, Packet) ->
 	try
 		?DEBUG("FFFFFFFFFFFFFFFFF===From=~p~nTo=~p~nPacket=~p~n",[From, To, Packet]),
 		{xmlelement,"message",Header,_ } = Packet,
@@ -81,7 +86,11 @@ offline_message_hook_handler(#jid{user=FromUser}=From, #jid{server=Domain}=To, P
 			"msgStatus" ->
 				ok;
 			_->
-				MID = dict:fetch("id", D),
+				MID = case dict:is_key("id", D) of
+						  true ->
+							  dict:fetch("id", D);
+						  _ -> ""
+					  end,
 				send_offline_message( From, To, Packet, MID,V )
 		end
 	catch
@@ -251,12 +260,14 @@ user_send_packet_handler(#jid{user=FU,server=FD}=From, To, Packet) ->
 				?DEBUG("IS_GROUP_CHAT=~p ; SRCID=~p; MT=~p, FU=~p; ACK_FROM=~p",[IS_GROUP_CHAT,SYNCID,MT,FU, ACK_FROM]),
 				if IS_GROUP_CHAT=:=false,ACK_FROM,MT=/=[],MT=/="msgStatus", MT=/="frienddynamicmsg",FU=/="messageack" ->
 %% 						if IS_GROUP_CHAT=:=false,ACK_FROM,MT=/="msgStatus", MT=/="frienddynamicmsg",FU=/="messageack" ->
-%% 							   SyncRes = gen_server:call(?MODULE,{sync_packet,SYNCID,From,To,Packet}),
-					   
-						aa_usermsg_handler:store_msg(SYNCID, From, To, RPacket),	   
+					   {M,S,SS} = os:timestamp(),
+					   MsgTime = lists:sublist(erlang:integer_to_list(M*1000000000000+S*1000000+SS),1,13),
+					   {Tag,E,Attr,Body} = Packet,
+					   RAttr0 = [{K,V} || {K, V} <- Attr, K=/="msgTime"],
+					   RAttr1 = [{"msgTime",MsgTime}|RAttr0],
+					   RPacket = {Tag,E,RAttr1,Body},
+					   aa_usermsg_handler:store_msg(SYNCID, From, To, RPacket);
 				   IS_GROUP_CHAT=:=false,ACK_FROM,MT=:="msgStatus" ->
-					   KK = FU++"@"++FD++"/offline_msg",
-					   ?DEBUG("==> SYNC_RES ack => ACK_USER=~p ; ACK_ID=~p",[KK,SYNCID]),
 					   aa_usermsg_handler:del_msg(SYNCID, From),
 					   ack_task({ack,SYNCID});
 				   true ->
@@ -274,14 +285,21 @@ user_send_packet_handler(#jid{user=FU,server=FD}=From, To, Packet) ->
 	end,
 	ok.
 
-user_receive_packet_handler(_JID, _From, _To, _Packet) ->
-		{M,S,SS} = os:timestamp(),
-		MsgTime = lists:sublist(erlang:integer_to_list(M*1000000000000+S*1000000+SS),1,13),
-		{Tag,E,Attr,Body} = Packet,
-		RAttr0 = [{K,V} || {K, V} <- Attr, K=/="msgTime"],
-		RAttr1 = [{"msgTime",MsgTime}|RAttr0],
-		RPacket = {Tag,E,RAttr1,Body},
-		TPid = erlang:spawn(fun()-> ack_task(SYNCID,From,To,Packet) end);
+user_receive_packet_handler(_JID, #jid{server=FD}=From, To, Packet) ->
+	[_,E|_] = tuple_to_list(Packet),
+	Domain = FD,
+	case E of 
+		"message" ->
+			{_,"message",Attr,_} = Packet,
+			D = dict:from_list(Attr),
+			%% 理论上讲，这个地方一定要有一个ID，不过如果没有，其实对服务器没影响，但客户端就麻烦了
+			SRC_ID_STR = case dict:is_key("id", D) of true -> dict:fetch("id", D); _ -> "" end,
+			SYNCID = SRC_ID_STR++"@"++Domain,
+			TPid = erlang:spawn(fun()-> ack_task(SYNCID,From,To,Packet) end),
+			ets:insert(?ETS_ACK_TASK, {SYNCID, TPid});
+		_ ->
+			skip
+	end,
 	ok.
 
 
@@ -322,6 +340,9 @@ init([]) ->
 	%% 启动5281端口，接收内网回调
 	aa_inf_server:start(),
 	State = #state{},
+	
+	ets:new(?ETS_ACK_TASK, [named_table, public, set]),
+	
 	%% 初始化mnesia表
 	State1 = init_mnesia_tables(State),
 	
@@ -343,20 +364,8 @@ handle_call(reload_config, _From, State) ->
 	ejabberd_config:reload_config(),
 	{reply, reload_ok, State};
 
-handle_call({sync_packet,K,From,To,Packet}, _F, State) ->
-	%% insert {K,V} 
-	%% reset msgTime
-	{M,S,SS} = now(),
-	MsgTime = lists:sublist(erlang:integer_to_list(M*1000000000000+S*1000000+SS),1,13),
-	{Tag,E,Attr,Body} = Packet,
-	RAttr0 = lists:map(fun({K,V})-> case K of "msgTime" -> skip; _-> {K,V} end end,Attr),
-	RAttr1 = lists:append([X||X<-RAttr0,X=/=skip],[{"msgTime",MsgTime}]),
-	RPacket = {Tag,E,RAttr1,Body},
-	%% add {K,V} to zset
-	?INFO_MSG("call aa_usermsg_handler store msg", []),
-	aa_usermsg_handler:store_msg(K, From, To, RPacket),
+handle_call(_Call, _From, State)->
 	{reply, ok, State}.
-
 
 handle_cast({server_ack,#jid{server=FD},_To,Packet},State)->
 	Domain = FD,
@@ -446,13 +455,11 @@ ack_task({ack,ID})->
 	ack_task({do,ack,ID});
 
 ack_task({do,M,ID})->
-	?INFO_MSG("DO_ACK_TASK_ID=~p ; M=~p.",[ID,M]),
 	try
-		OBJ = mnesia:dirty_read(dmsg,ID),
-		?DEBUG("DO_ACK_TASK_ID=~p ; M=~p ; OBJ=~p.",[ID,M,OBJ]),
+		OBJ = ets:lookup(?ETS_ACK_TASK, ID),
 		case OBJ of
-			[{_,_,ResendPid}] ->
-				ResendPid!M;
+			[{ID, ACKTaskPid}] ->
+				ACKTaskPid!M;
 			_ ->
 				skip
 		end
@@ -462,11 +469,12 @@ ack_task({do,M,ID})->
 			?ERROR_MSG("DO_ACK_TASK_ID=~p ; M=~p ; ERROR=~p.",[ID,M,Error]),
 			ack_err
 	end.
+
 ack_task(ID,From,To,Packet)->
 	?INFO_MSG("ACK_TASK_~p ::::> START.",[ID]),
 	receive 
 		ack ->
-			aa_usermsg_handler:del_msg(ID,To),
+			ets:delete(?ETS_ACK_TASK, ID),
 			?INFO_MSG("ACK_TASK_~p ::::> ACK.",[ID])
 	after ?TIME_OUT -> 
 		gen_server:cast(?MODULE, {deal_offline_msg, From, To, Packet})
@@ -609,6 +617,6 @@ random_pushpid(Pids) ->
 local_handle_offline_message() ->
 	receive
 		{offline_msg, From, To, Packet} ->
-			offline_message_hook_handler(From,To,Packet),
+			deal_offline_msg(From,To,Packet),
 			local_handle_offline_message()
 	end.
