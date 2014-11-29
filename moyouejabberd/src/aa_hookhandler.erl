@@ -31,8 +31,6 @@
 	 sm_remove_connection_hook_handler/3
 	]).
 
--record(dmsg,{mid,pid}).
-
 sm_register_connection_hook_handler(SID, JID, Info) -> ok.
 sm_remove_connection_hook_handler(SID, JID, Info) -> ok.
 
@@ -81,64 +79,25 @@ offline_message_hook_handler(#jid{user=FromUser}=From, #jid{server=Domain}=To, P
 	try
 		?DEBUG("FFFFFFFFFFFFFFFFF===From=~p~nTo=~p~nPacket=~p~n",[From, To, Packet]),
 		{xmlelement,"message",Header,_ } = Packet,
-		%%这里只推送 msgtype=normalchat 的消息，以下是判断
+
 		D = dict:from_list(Header),
 		V = dict:fetch("msgtype", D),
 		case V of
 			"msgStatus" ->
 				ok;
 			_->
-				if FromUser=/="messageack" ->
-					   %% 2014-3-5 : 当消息离线时，要更改存储模块中对应的消息状态
-					   MID = case dict:is_key("id", D) of
-							 true ->
-								 ID = dict:fetch("id", D),
-								 ack_task({offline,ID}),
-								 ID;
-							 _ -> ""
-							 end,
-					   %% 回调webapp
-					   case catch ejabberd_config:get_local_option({ack_from ,Domain}) of
-						   true->
-							   case aa_group_chat:is_group_chat(To) of
-								   true ->
-									   skip;
-								   false ->
-									   offline_message_hook_handler( From, To, Packet, D, MID,V )
-							   end,
-							   ok;
-						   _->
-							   %% 宠物那边走这个逻辑
-							   case V of 
-								   "normalchat" -> 
-									   offline_message_hook_handler( From, To, Packet, D, MID,V ); 
-								   _-> 
-									   skip 
-							   end
-					   end;
-				   true->
-					   ok
-				end
+				MID = dict:fetch("id", D),
+				send_offline_message( From, To, Packet, MID,V )
 		end
 	catch
 		_:_ -> ok
 	end.
 
-
-offline_message_hook_handler(From, To, Packet,D,ID,MsgType ) ->
-	try
-		V = dict:fetch("fileType", D),
-		send_offline_message(From ,To ,Packet,V,ID,MsgType )
-	catch
-		_:_ -> send_offline_message(From ,To ,Packet,"",ID,MsgType )
-	end,
-	ok.
-
 %% 将 Packet 中的 Text 消息 Post 到指定的 Http 服务
 %% IOS 消息推送功能
-send_offline_message(From ,To ,Packet,Type,MID,MsgType )->
-	send_offline_message(From,To,Packet,Type,MID,MsgType,0).	
-send_offline_message(From ,To ,Packet,Type,MID,MsgType,N) when N < 3 ->
+send_offline_message(From ,To ,Packet,MID,MsgType )->
+	send_offline_message(From,To,Packet,MID,MsgType,0).	
+send_offline_message(From ,To ,Packet,MID,MsgType,N) when N < 3 ->
 	{jid,FromUser,Domain,_,_,_,_} = From ,	
 	{jid,ToUser,_,_,_,_,_} = To ,	
 	%% 取自配置文件 ejabberd.cfg
@@ -147,13 +106,12 @@ send_offline_message(From ,To ,Packet,Type,MID,MsgType,N) when N < 3 ->
 	HTTPService = ejabberd_config:get_local_option({http_server_service_client,Domain}),
 	HTTPTarget = string:concat(HTTPServer,HTTPService),
 	Msg = get_text_message_from_packet( Packet ),
-	{Service,Method,FN,TN,MSG,T,MSG_ID,MType} = {
+	{Service,Method,FN,TN,MSG,MSG_ID,MType} = {
 				      list_to_binary("service.uri.pet_user"),
 				      list_to_binary("pushMsgApn"),
 				      list_to_binary(FromUser),
 				      list_to_binary(ToUser),
 				      list_to_binary(Msg),
-				      list_to_binary(Type),
 				      list_to_binary(MID),
 				      list_to_binary(MsgType)
 				     },
@@ -170,13 +128,12 @@ send_offline_message(From ,To ,Packet,Type,MID,MsgType,N) when N < 3 ->
 		       {"service",Service},
 		       {"method",Method},
 		       {"channel",list_to_binary("9")},
-		       {"params",{obj,[{"msgtype",MType},{"fromname",FN},{"toname",TN},{"msg",MSG},{"type",T},{"id",MSG_ID},{"groupid",Gid}]} } 
+		       {"params",{obj,[{"msgtype",MType},{"fromname",FN},{"toname",TN},{"msg",MSG},{"id",MSG_ID},{"groupid",Gid}]} } 
 		      ]},
 	Form = "body="++http_uri:encode( rfc4627:encode(ParamObj) ),
 	try
 		?DEBUG("MMMMMMMMMMMMMMMMM===Form=~p~n",[Form]),
 		case httpc:request(post,{ HTTPTarget ,[], ?HTTP_HEAD , Form },[],[] ) of   
-%% 		case httpc:request(post,{ HTTPTarget ,[], ?HTTP_HEAD , Form },[{version, "HTTP/1.0"}],[] ) of   
 			{ok, {_,_,Body}} ->
 				case rfc4627:decode(Body) of
 					{ok,Obj,_Re} -> 
@@ -195,18 +152,18 @@ send_offline_message(From ,To ,Packet,Type,MID,MsgType,N) when N < 3 ->
 			{error, Reason} ->
 				?INFO_MSG("[ERROR] cause N=~p~nErr=~p~nForm=~p~n",[N,Reason,Form]),
 				timer:sleep(200),
-				send_offline_message(From,To,Packet,Type,MID,MsgType,N+1)
+				send_offline_message(From,To,Packet,MID,MsgType,N+1)
 		end 
 	catch 
 		_:_ ->
 			Err0 = erlang:get_stacktrace(),
 			?ERROR_MSG("[ERROR] offline_message_hook_handler N=~p~nErr=~p~nForm=~p~n",[N,Err0,Form]),
 			timer:sleep(200),
-			send_offline_message(From,To,Packet,Type,MID,MsgType,N+1)	
+			send_offline_message(From,To,Packet,MID,MsgType,N+1)	
 	end,
 	ok;
-send_offline_message(From ,To ,Packet,Type,MID,MsgType,3) ->
-	?ERROR_MSG("[ERROR] offline_message_hook_handler_lost ~p",[{From ,To ,Packet,Type,MID,MsgType,3}]),
+send_offline_message(From ,To ,Packet,MID,MsgType,3) ->
+	?ERROR_MSG("[ERROR] offline_message_hook_handler_lost ~p",[{From ,To ,Packet,MID,MsgType,3}]),
 	ok.
 
 %roster_in_subscription(Acc, User, Server, JID, SubscriptionType, Reason) -> bool()
@@ -503,11 +460,7 @@ code_change(_OldVsn, State, _Extra) ->
 %% ====================================================================
 
 ack_task({new,ID,From,To,Packet})->
-        TPid = erlang:spawn(fun()-> ack_task(ID,From,To,Packet) end),
-        ?DEBUG("ack_task_new ~p",[{ID,From,To,Packet,TPid}]),
-        Dmsg = #dmsg{mid=ID,pid=TPid},
-        RTN = mnesia:dirty_write(dmsg,Dmsg),
-        ?DEBUG("ack_task_new_rtn=~p ; dmsg=~p",[RTN,Dmsg]);
+        TPid = erlang:spawn(fun()-> ack_task(ID,From,To,Packet) end);
 	
 ack_task({ack,ID})->
 	ack_task({do,ack,ID});
@@ -561,19 +514,6 @@ get_id()->
 init_mnesia_tables(State) ->
 	[Domain|_] = ?MYHOSTS,
 	
-	mnesia:create_table(dmsg,[{attributes,record_info(fields,dmsg)},{ram_copies,[node()]}]),
-	
-	%% 用户消息进程表,全节点复制
-%% 放弃每个用户一个进程，这些代码无用，注释
-%% 	case mnesia:create_table(?MY_USER_MSGPID_INFO, [{attributes, record_info(fields,?MY_USER_MSGPID_INFO)}, 
-%% 										  {ram_copies, [node()]}]) of
-%% 		{aborted,{already_exists,_}} ->
-%% 			mnesia:add_table_copy(?MY_USER_MSGPID_INFO, node(), ram_copies);
-%% 		_ ->
-%% 			skip
-%% 	end,
-	
-	%% 群组信息表
 	case ejabberd_config:get_local_option({store_group_members, Domain}) of
 		1 ->
 			create_or_copy_table(?GOUPR_MEMBER_TABLE, [{attributes, record_info(fields,?GOUPR_MEMBER_TABLE)}, 

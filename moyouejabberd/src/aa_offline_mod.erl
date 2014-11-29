@@ -89,7 +89,6 @@ init([]) ->
 	?INFO_MSG("INIT_START_OFFLINE_MOD >>>>>>>>>>>>>>>>>>>>>>>> ~p",[liangchuan_debug]),  
 	lists:foreach(
 	  fun(Host) ->
-%% 		ejabberd_hooks:add(offline_message_hook, Host, ?MODULE, offline_message_hook_handler, 40),
 		ejabberd_hooks:add(sm_remove_connection_hook, Host, ?MODULE, sm_remove_connection_hook_handler, 40),
 		ejabberd_hooks:add(sm_register_connection_hook, Host, ?MODULE, sm_register_connection_hook_handler, 60),
 		ejabberd_hooks:add(user_available_hook, Host, ?MODULE, user_available_hook_handler, 40)
