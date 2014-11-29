@@ -297,20 +297,25 @@ user_send_packet_handler(#jid{user=FU,server=FD}=From, To, Packet) ->
 	end,
 	ok.
 
-user_receive_packet_handler(_JID, #jid{server=FD}=From, To, Packet) ->
+user_receive_packet_handler(_JID, #jid{user = FU, server=FD}=From, To, Packet) ->
 	[_,E|_] = tuple_to_list(Packet),
 	Domain = FD,
-	case E of 
-		"message" ->
-			{_,"message",Attr,_} = Packet,
-			D = dict:from_list(Attr),
-			%% 理论上讲，这个地方一定要有一个ID，不过如果没有，其实对服务器没影响，但客户端就麻烦了
-			SRC_ID_STR = case dict:is_key("id", D) of true -> dict:fetch("id", D); _ -> "" end,
-			SYNCID = SRC_ID_STR++"@"++Domain,
-			TPid = erlang:spawn(fun()-> ack_task(SYNCID,From,To,Packet) end),
-			ets:insert(?ETS_ACK_TASK, {SYNCID, TPid});
-		_ ->
-			skip
+	if FU == "messageack" ->
+		   skip;
+	   true ->
+		   case E of 
+			   "message" ->
+				   ?INFO_MSG("user receive packet ~p", [{From, To, Packet}]),
+				   {_,"message",Attr,_} = Packet,
+				   D = dict:from_list(Attr),
+				   %% 理论上讲，这个地方一定要有一个ID，不过如果没有，其实对服务器没影响，但客户端就麻烦了
+				   SRC_ID_STR = case dict:is_key("id", D) of true -> dict:fetch("id", D); _ -> "" end,
+				   SYNCID = SRC_ID_STR++"@"++Domain,
+				   TPid = erlang:spawn(fun()-> ack_task(SYNCID,From,To,Packet) end),
+				   ets:insert(?ETS_ACK_TASK, {SYNCID, TPid});
+			   _ ->
+				   skip
+		   end
 	end,
 	ok.
 
@@ -440,7 +445,7 @@ handle_cast({deal_offline_msg, From,To,Packet}, State) ->
 			{noreply, #state{push_pids = PushPids}};
 		false ->
 			NewPids = lists:delete(Pid, PushPids),
-			offline_message_hook_handler(From,To,Packet),
+			deal_offline_msg(From, To, Packet),
 			{noreply, State#state{push_pids = NewPids}}
 	end;
 handle_cast(_Msg, State) -> 

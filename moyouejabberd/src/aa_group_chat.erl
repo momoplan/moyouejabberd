@@ -143,10 +143,16 @@ handle_cast({route_group_msg,#jid{server=Domain,user=FU}=From,#jid{user=GroupId}
 									  false ->
 										  UID = binary_to_list(User)
 								  end,
-								  #jid{user=UID,server=Domain,luser=UID,lserver=Domain,resource=[],lresource=[]}
+								  if FU == UID ->
+										 skip;
+									 true ->
+										 #jid{user=UID,server=Domain,luser=UID,lserver=Domain,resource=[],lresource=[]}
+								  end
 							  end || User <- Res],
 					?DEBUG("###### route_group_msg 002 :::> GroupId=~p ; Roster=~p",[GroupId,Roster]),
-					lists:foreach(fun(Target) ->
+					lists:foreach(fun(skip) ->
+										  skip;
+									 (Target) ->
 										  spawn(fun()-> route_msg(From,Target,Packet,GroupId) end)
 								  end,Roster);
 				_ ->
