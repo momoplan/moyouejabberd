@@ -17,16 +17,11 @@
 
 -export([
 	 start_link/0,
-%% 	 offline_message_hook_handler/3,
-	 sm_register_connection_hook_handler/3,
-	 sm_remove_connection_hook_handler/3,
 	 user_available_hook_handler/1
 ]).
 
 start_link() ->
 	gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
-
-sm_register_connection_hook_handler(SID, JID, Info) -> ok.
 
 user_available_hook_handler(JID) -> send_offline_msg(JID).
 
@@ -49,23 +44,6 @@ send_offline_msg(JID) ->
 	end,
 	ok.
 
-
-sm_remove_connection_hook_handler(SID, JID, Info) -> ok.
-
-%% 离线消息事件
-%% 保存离线消息
-%% offline_message_hook_handler(#jid{user=FromUser}=From, #jid{user=User,server=Domain}=To, Packet) ->
-%% 	Type = xml:get_tag_attr_s("type", Packet),
-%% 	ID = xml:get_tag_attr_s("id", Packet),
-%% 	IS_GROUP = aa_group_chat:is_group_chat(To),
-%% 	if IS_GROUP==false,FromUser=/="messageack",User=/="messageack",Type=/="error",Type=/="groupchat",Type=/="headline" ->
-%% 			SYNCID = ID++"@"++Domain,
-%% 								?ERROR_MSG("CALL  store msg aa offline mod", []),
-%% 			aa_usermsg_handler:store_msg(SYNCID, From, To, Packet);
-%% 		true ->
-%% 			ok
-%% 	end.
-
 %% ====================================================================
 %% Behavioural functions 
 %% ====================================================================
@@ -75,8 +53,6 @@ init([]) ->
 	?INFO_MSG("INIT_START_OFFLINE_MOD >>>>>>>>>>>>>>>>>>>>>>>> ~p",[liangchuan_debug]),  
 	lists:foreach(
 	  fun(Host) ->
-		ejabberd_hooks:add(sm_remove_connection_hook, Host, ?MODULE, sm_remove_connection_hook_handler, 40),
-		ejabberd_hooks:add(sm_register_connection_hook, Host, ?MODULE, sm_register_connection_hook_handler, 60),
 		ejabberd_hooks:add(user_available_hook, Host, ?MODULE, user_available_hook_handler, 40)
 	  end, ?MYHOSTS),
 	?INFO_MSG("INIT_END_OFFLINE_MOD <<<<<<<<<<<<<<<<<<<<<<<<< ~p",[liangchuan_debug]),

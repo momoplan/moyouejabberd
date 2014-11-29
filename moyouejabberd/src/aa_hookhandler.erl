@@ -25,14 +25,9 @@
 	 offline_message_hook_handler/3,
 	 roster_in_subscription_handler/6,
 	 user_receive_packet_handler/4,
-	 sm_register_connection_hook_handler/3,
 	 refresh_bak_info/0,
 	 rlcfg/0,
-	 sm_remove_connection_hook_handler/3
 	]).
-
-sm_register_connection_hook_handler(SID, JID, Info) -> ok.
-sm_remove_connection_hook_handler(SID, JID, Info) -> ok.
 
 start_link() ->
 	gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
@@ -230,59 +225,42 @@ user_send_packet_handler(#jid{user=FU,server=FD}=From, To, Packet) ->
 		Domain = FD,
 		case E of 
 			"message" ->
-	
 				{_,"message",Attr,_} = Packet,
 				?DEBUG("Attr=~p", [Attr] ),
 				D = dict:from_list(Attr),
-				case dict:is_key("type", D) of
-					false ->
-						?DEBUG("packet do not have attr `type`,so skip", []);
-					true ->
-						T = dict:fetch("type", D),
-						MT = case dict:is_key("msgtype",D) of true-> dict:fetch("msgtype",D); _-> "" end,
-						%% 理论上讲，这个地方一定要有一个ID，不过如果没有，其实对服务器没影响，但客户端就麻烦了
-						SRC_ID_STR = case dict:is_key("id", D) of true -> dict:fetch("id", D); _ -> "" end,
-						?DEBUG("SRC_ID_STR=~p", [SRC_ID_STR] ),
-						?DEBUG("Type=~p", [T] ),
-						ACK_FROM = case catch ejabberd_config:get_local_option({ack_from ,Domain}) of true -> true; _ -> false end,
-						?DEBUG("ack_from=~p ; Domain=~p ; T=~p ; MT=~p",[ACK_FROM,Domain,T,MT]),
-						SYNCID = SRC_ID_STR++"@"++Domain,
-						
-						server_ack(From,To,Packet),
-						%% 判断是否群聊消息，不是根据 msgtype 判断的，是根据收消息人判断，这个逻辑很关键
-						IS_GROUP_CHAT = case aa_group_chat:is_group_chat(To) of  
-											true when MT=/="msgStatus" ->
-												?DEBUG("###### send_group_chat_msg ###### From=~p ; Domain=~p",[From,Domain]),
-												aa_group_chat:route_group_msg(From,To,Packet),
-												true;
-											true when MT=:="msgStatus" -> false;
-											false -> false 
-										end,
-						?DEBUG("IS_GROUP_CHAT=~p ; SRCID=~p; MT=~p, FU=~p; ACK_FROM=~p",[IS_GROUP_CHAT,SYNCID,MT,FU, ACK_FROM]),
-						if IS_GROUP_CHAT=:=false,ACK_FROM,MT=/=[],MT=/="msgStatus", MT=/="frienddynamicmsg",FU=/="messageack" ->
+				T = dict:fetch("type", D),
+				MT = case dict:is_key("msgtype",D) of true-> dict:fetch("msgtype",D); _-> "" end,
+				%% 理论上讲，这个地方一定要有一个ID，不过如果没有，其实对服务器没影响，但客户端就麻烦了
+				SRC_ID_STR = case dict:is_key("id", D) of true -> dict:fetch("id", D); _ -> "" end,
+				?DEBUG("SRC_ID_STR=~p", [SRC_ID_STR] ),
+				?DEBUG("Type=~p", [T] ),
+				ACK_FROM = case catch ejabberd_config:get_local_option({ack_from ,Domain}) of true -> true; _ -> false end,
+				?DEBUG("ack_from=~p ; Domain=~p ; T=~p ; MT=~p",[ACK_FROM,Domain,T,MT]),
+				SYNCID = SRC_ID_STR++"@"++Domain,
+				
+				server_ack(From,To,Packet),
+				%% 判断是否群聊消息，不是根据 msgtype 判断的，是根据收消息人判断，这个逻辑很关键
+				IS_GROUP_CHAT = case aa_group_chat:is_group_chat(To) of  
+									true when MT=/="msgStatus" ->
+										?DEBUG("###### send_group_chat_msg ###### From=~p ; Domain=~p",[From,Domain]),
+										aa_group_chat:route_group_msg(From,To,Packet),
+										true;
+									true when MT=:="msgStatus" -> false;
+									false -> false 
+								end,
+				?DEBUG("IS_GROUP_CHAT=~p ; SRCID=~p; MT=~p, FU=~p; ACK_FROM=~p",[IS_GROUP_CHAT,SYNCID,MT,FU, ACK_FROM]),
+				if IS_GROUP_CHAT=:=false,ACK_FROM,MT=/=[],MT=/="msgStatus", MT=/="frienddynamicmsg",FU=/="messageack" ->
 %% 						if IS_GROUP_CHAT=:=false,ACK_FROM,MT=/="msgStatus", MT=/="frienddynamicmsg",FU=/="messageack" ->
 %% 							   SyncRes = gen_server:call(?MODULE,{sync_packet,SYNCID,From,To,Packet}),
-							   
-							   {M,S,SS} = os:timestamp(),
-							   MsgTime = lists:sublist(erlang:integer_to_list(M*1000000000000+S*1000000+SS),1,13),
-							   {Tag,E,Attr,Body} = Packet,
-							   RAttr0 = [{K,V} || {K, V} <- Attr, K=/="msgTime"],
-							   RAttr1 = [{"msgTime",MsgTime}|RAttr0],
-							   RPacket = {Tag,E,RAttr1,Body},
-							   %% add {K,V} to zset
-%% 								?ERROR_MSG("CALL  store msg aa hookhandler", []),
-							   aa_usermsg_handler:store_msg(SYNCID, From, To, RPacket),
-							   
-							   ?DEBUG("==> SYNC_RES new => ID=~p",[SRC_ID_STR]),
-							   ack_task({new,SYNCID,From,To,Packet});
-						   IS_GROUP_CHAT=:=false,ACK_FROM,MT=:="msgStatus" ->
-							   KK = FU++"@"++FD++"/offline_msg",
-							   ?DEBUG("==> SYNC_RES ack => ACK_USER=~p ; ACK_ID=~p",[KK,SYNCID]),
-							   aa_usermsg_handler:del_msg(SYNCID, From),
-							   ack_task({ack,SYNCID});
-						   true ->
-							   skip
-						end
+					   
+						aa_usermsg_handler:store_msg(SYNCID, From, To, RPacket),	   
+				   IS_GROUP_CHAT=:=false,ACK_FROM,MT=:="msgStatus" ->
+					   KK = FU++"@"++FD++"/offline_msg",
+					   ?DEBUG("==> SYNC_RES ack => ACK_USER=~p ; ACK_ID=~p",[KK,SYNCID]),
+					   aa_usermsg_handler:del_msg(SYNCID, From),
+					   ack_task({ack,SYNCID});
+				   true ->
+					   skip
 				end;
 			_ ->
 				?DEBUG("~p", [skip_00] ),
@@ -297,6 +275,13 @@ user_send_packet_handler(#jid{user=FU,server=FD}=From, To, Packet) ->
 	ok.
 
 user_receive_packet_handler(_JID, _From, _To, _Packet) ->
+		{M,S,SS} = os:timestamp(),
+		MsgTime = lists:sublist(erlang:integer_to_list(M*1000000000000+S*1000000+SS),1,13),
+		{Tag,E,Attr,Body} = Packet,
+		RAttr0 = [{K,V} || {K, V} <- Attr, K=/="msgTime"],
+		RAttr1 = [{"msgTime",MsgTime}|RAttr0],
+		RPacket = {Tag,E,RAttr1,Body},
+		TPid = erlang:spawn(fun()-> ack_task(SYNCID,From,To,Packet) end);
 	ok.
 
 
@@ -383,10 +368,8 @@ handle_cast({server_ack,#jid{server=FD},_To,Packet},State)->
 			   true -> true;
 			   _ -> false
 	end,
-	%% 一个标记，如果有值，则表示不需要 server_ack 回弹此消息
-	G = case dict:is_key("g", D) of true -> dict:fetch("g", D); _ -> true end,
-	?DEBUG("G=~p ; Packet=~p",[G,Packet]),
-	if G and ACK_FROM and ( (MT=:="normalchat") or (MT=:="groupchat") ) ->
+
+	if ACK_FROM and ( (MT=:="normalchat") or (MT=:="groupchat") ) ->
 		   %% IS_GROUP_CHAT = aa_group_chat:is_group_chat(To),
 		   case dict:is_key("from", D) of 
 			   true -> 
@@ -459,13 +442,9 @@ code_change(_OldVsn, State, _Extra) ->
 %% Internal functions
 %% ====================================================================
 
-ack_task({new,ID,From,To,Packet})->
-        TPid = erlang:spawn(fun()-> ack_task(ID,From,To,Packet) end);
-	
 ack_task({ack,ID})->
 	ack_task({do,ack,ID});
-ack_task({offline,ID})->
-	ack_task({do,offline,ID});
+
 ack_task({do,M,ID})->
 	?INFO_MSG("DO_ACK_TASK_ID=~p ; M=~p.",[ID,M]),
 	try
@@ -486,19 +465,11 @@ ack_task({do,M,ID})->
 ack_task(ID,From,To,Packet)->
 	?INFO_MSG("ACK_TASK_~p ::::> START.",[ID]),
 	receive 
-		offline->
-			mnesia:dirty_delete(dmsg,ID),
-			?INFO_MSG("ACK_TASK_~p ::::> OFFLINE.",[ID]);
 		ack ->
-			mnesia:dirty_delete(dmsg,ID),
+			aa_usermsg_handler:del_msg(ID,To),
 			?INFO_MSG("ACK_TASK_~p ::::> ACK.",[ID])
 	after ?TIME_OUT -> 
-		?DEBUG("ACK_TASK_~p ::::> AFTER",[ID]),
-		%% 2014-06-18 : 离线消息统统上桥,如果开启桥接模式
-		mnesia:dirty_delete(dmsg,ID),
-%% 		gen_server:cast(?MODULE,{offline_message,ID,From,To,Packet}),
 		gen_server:cast(?MODULE, {deal_offline_msg, From, To, Packet})
-%% 		offline_message_hook_handler(From,To,Packet)
 	end.
 
 
