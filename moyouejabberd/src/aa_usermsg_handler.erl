@@ -22,7 +22,7 @@
 		 store_msg/4,
 		 del_msg/2,
 		 message_status_info/0,
-		 get_offline_msg/2]).
+		 get_offline_msg/1]).
 
 -export([dump/1,
 		load/1,
@@ -174,7 +174,7 @@ get_offline_msg(UserJid1) ->
 						end,
 					mnesia:transaction(F),
 					TotalCount = length(AvaliableList),
-					MsgsIds = AvaliableList
+					MsgsIds = AvaliableList,
 					?INFO_MSG("aa usermsg offline ids ~p", [MsgsIds]),
 					%% 保证有消息，保证是倒序的
 					Msgs =

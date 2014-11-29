@@ -32,25 +32,14 @@ user_available_hook_handler(JID) -> send_offline_msg(JID).
 
 send_offline_msg(JID) ->
 	try 
-		%% JID={jid,"cc","test.com","Smack","cc","test.com","Smack"} 
 		{jid,User,Domain,_,_,_,_} = JID,
 		KEY = User++"@"++Domain++"/offline_msg",
 
-%% 		?WARNING_MSG("user ~p avaliable to send offline msg", [User]),
 		{ok,R} = aa_usermsg_handler:get_offline_msg(JID),
-		%% TODO 这里，如果发送失败了，是需要重新发送的，但是先让他跑起来
+
 		?INFO_MSG("@@@@ send_offline_msg :::> KEY=~p ; R.size=~p~n",[KEY,length(R)]),
-		lists:foreach(fun(#user_msg{id = Id, from = FF, to = TT, packat = PP})->
-							  try	
-								  case ejabberd_router:route(FF, TT, PP) of
-									  ok -> aa_usermsg_handler:del_msg(Id, JID); 
-									  Err -> throw("Error: "++Err)
-								  end
-							  catch
-								  E:I ->
-									  ?INFO_MSG("~p ; ~p",[E,I])	
-							  end,
-							  ok
+		lists:foreach(fun(#user_msg{from = FF, to = TT, packat = PP})->
+						 ejabberd_router:route(FF, TT, PP) 
 					  end,R) ,
 		?INFO_MSG("@@@@ send_offline_message ::>KEY=~p  <<<<<<<<<<<<<<<<<",[KEY]) 
 	catch 
