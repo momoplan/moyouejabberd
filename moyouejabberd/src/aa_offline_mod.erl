@@ -35,12 +35,9 @@ send_offline_msg(JID) ->
 		%% JID={jid,"cc","test.com","Smack","cc","test.com","Smack"} 
 		{jid,User,Domain,_,_,_,_} = JID,
 		KEY = User++"@"++Domain++"/offline_msg",
-		Range = case ejabberd_config:get_local_option({max_offline,Domain}) of 
-					N when is_integer(N),N > 0 -> N; 
-					_ -> 0
-				end,
+
 %% 		?WARNING_MSG("user ~p avaliable to send offline msg", [User]),
-		{ok,R} = aa_usermsg_handler:get_offline_msg(Range, JID),
+		{ok,R} = aa_usermsg_handler:get_offline_msg(JID),
 		%% TODO 这里，如果发送失败了，是需要重新发送的，但是先让他跑起来
 		?INFO_MSG("@@@@ send_offline_msg :::> KEY=~p ; R.size=~p~n",[KEY,length(R)]),
 		lists:foreach(fun(#user_msg{id = Id, from = FF, to = TT, packat = PP})->

@@ -140,7 +140,7 @@ del_msg(Key, UserJid1) ->
 	aa_msg_statistic:del(),
 	?INFO_MSG("del msg finish", []).
 
-get_offline_msg(Range, UserJid1) ->
+get_offline_msg(UserJid1) ->
 	?WARNING_MSG("get offline msg", []),
 	UserJid = format_user_data(UserJid1),
 	#?MY_USER_TABLES{msg_table = TableName, msg_list_table = RamMsgListTableName} =
@@ -150,7 +150,7 @@ get_offline_msg(Range, UserJid1) ->
 			%% 内存里没有任何列表的数据，这时候可以认为需要到数据库里查找一下数据
 %% 			?ERROR_MSG("possible loop 1", []),
 			load(UserJid),
-			get_offline_msg(Range, UserJid);
+			get_offline_msg(UserJid);
 		[#user_msg_list{msg_list = []}] ->
 			{ok, []};
 		[#user_msg_list{msg_list = KeysList} = UM] ->
@@ -158,7 +158,7 @@ get_offline_msg(Range, UserJid1) ->
 				[-1|_] ->%% 有一部分数据被写入数据库了	
 %% 					?ERROR_MSG("possible loop 2", []),				
 					load(UserJid),
-					get_offline_msg(Range, UserJid);
+					get_offline_msg(UserJid);
 				_ ->
 					AvaliableList 
 						= lists:filter(fun(Key) ->
@@ -174,12 +174,7 @@ get_offline_msg(Range, UserJid1) ->
 						end,
 					mnesia:transaction(F),
 					TotalCount = length(AvaliableList),
-					
-					if TotalCount > Range andalso Range /=0 ->
-						   MsgsIds = lists:sublist(AvaliableList, Range);
-					   true ->
-						   MsgsIds = AvaliableList
-					end,
+					MsgsIds = AvaliableList
 					?INFO_MSG("aa usermsg offline ids ~p", [MsgsIds]),
 					%% 保证有消息，保证是倒序的
 					Msgs =
