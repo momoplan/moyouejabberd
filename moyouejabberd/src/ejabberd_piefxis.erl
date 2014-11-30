@@ -356,26 +356,7 @@ populate_user(User,Domain,El=#xmlel{name='vCard', ns='vcard-temp'}) ->
 %% @doc  Read off-line message from the XML and send it to the server
 
 populate_user(User,Domain,El=#xmlel{name='offline-messages'}) ->
-    io:format("Trying to add/update offline-messages...",[]),
-    case loaded_module(Domain, mod_offline) of
-	{ok, _DBType} ->
-	    ok = exmpp_xml:foreach(
-		   fun (_Element, {xmlcdata, _}) ->
-			   ok;
-		       (_Element, Child) ->
-			   From  = exmpp_xml:get_attribute(Child, <<"from">>,none),
-			   FullFrom = jid_to_old_jid(exmpp_jid:parse(From)),
-			   FullUser = jid_to_old_jid(exmpp_jid:make(User,
-								    Domain)),
-			   OldChild = exmpp_xml:xmlel_to_xmlelement(Child),
-			   _R = mod_offline:store_packet(FullFrom, FullUser, OldChild)
-		   end, El), io:format(" DONE.~n",[]);
-	_ ->
-	    io:format(" ERROR.~n",[]),
-	    ?ERROR_MSG("No modules loaded [mod_offline] ~s ~n",
-		       [exmpp_xml:document_to_list(El)]),
-	    {error, not_found}
-    end;
+    io:format("Trying to add/update offline-messages...",[]);
 
 %% @spec User   = String with the user name
 %%       Domain = String with a domain name

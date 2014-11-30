@@ -81,7 +81,6 @@
 	     mod_muc,
 	     mod_muc_log,
 	     mod_muc_room,
-	     mod_offline,
 	     mod_privacy,
 	     mod_private,
 	     mod_proxy65,

@@ -622,7 +622,6 @@ replace_module(mod_blocking_odbc) -> {mod_blocking, odbc};
 replace_module(mod_irc_odbc) -> {mod_irc, odbc};
 replace_module(mod_last_odbc) -> {mod_last, odbc};
 replace_module(mod_muc_odbc) -> {mod_muc, odbc};
-replace_module(mod_offline_odbc) -> {mod_offline, odbc};
 replace_module(mod_privacy_odbc) -> {mod_privacy, odbc};
 replace_module(mod_private_odbc) -> {mod_private, odbc};
 replace_module(mod_roster_odbc) -> {mod_roster, odbc};
