@@ -127,7 +127,8 @@ handle_http(Req) ->
 		end
 	catch
 		C:Reason -> 
-			?INFO_MSG("aa_http c=~p ; reason=~p",[C,Reason])
+			?INFO_MSG("aa_http c=~p ; reason=~p",[C,Reason]),
+		http_response({#success{success=false,entity=list_to_binary("bad argrment")},Req})
 	end.
 %% 	gen_server:call(?MODULE,{handle_http,Req}).
 
