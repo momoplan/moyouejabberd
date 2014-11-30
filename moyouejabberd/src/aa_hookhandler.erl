@@ -85,7 +85,8 @@ get_text_message_form_packet_result( Body )->
 %% 离线消息处理器
 %% 钩子回调
 offline_message_hook_handler(From, To, Packet) ->
-	gen_server:cast(?MODULE, {deal_offline_msg, From, To, Packet}).
+	gen_server:cast(?MODULE, {deal_offline_msg, From, To, Packet}),
+	stop.
 
 deal_offline_msg(From, To, Packet) ->
 	try
