@@ -11,6 +11,8 @@ rel/example_project
 
 .metadata/*
 
+mnesia/*
+
 *.log
 *.lck
 

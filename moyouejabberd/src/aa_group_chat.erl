@@ -60,10 +60,10 @@ reload_group_members() ->
 	end,
 	lists:foreach(F, GroupIds).
 
-route_group_msg(From,To,Packet)->
+route_group_msg(From,GroupId,Packet)->
 	{ok,Pid} = start(),
-	?DEBUG("###### route_group_msg_001 ::::> {From,To,Packet}=~p",[{From,To,Packet}]),
-	gen_server:cast(Pid,{route_group_msg,From,To,Packet}).
+	?DEBUG("###### route_group_msg_001 ::::> {From,To,Packet}=~p",[{From,GroupId,Packet}]),
+	gen_server:cast(Pid,{route_group_msg,From,GroupId,Packet}).
 
 %% {"service":"group_chat","method":"remove_user","params":{"domain":"test.com","gid":"123123","uid":"123123"}}
 %% "{\"method\":\"remove_user\",\"params\":{\"domain\":\"test.com\",\"gid\":\"123123\",\"uid\":\"123123\"}}"
@@ -110,7 +110,7 @@ init([]) ->
 handle_call(_Requset,_From, State) ->
 	{reply,ok,State}.
 
-handle_cast({route_group_msg,#jid{server=Domain,user=FU}=From,#jid{user=GroupId},Packet}, State) ->
+handle_cast({route_group_msg,#jid{server=Domain,user=FU}=From,GroupId,Packet}, State) ->
 	Result =
 		case mnesia:dirty_read(?GOUPR_MEMBER_TABLE, GroupId) of
 			[] ->
@@ -119,7 +119,7 @@ handle_cast({route_group_msg,#jid{server=Domain,user=FU}=From,#jid{user=GroupId}
 						UserList1 = [binary_to_list(Usr) || Usr <- UserList],
 						Data = #group_members{gid = GroupId, members = UserList1},
 						mnesia:dirty_write(?GOUPR_MEMBER_TABLE, Data),
-						?DEBUG("###### get_user_list_by_group_id_http :::> GroupId=~p ; Roster=~p",[GroupId,UserList]),
+%% 						?WARNING_MSG("###### get_user_list_by_group_id_http :::> GroupId=~p ; Roster=~p",[GroupId,UserList]),
 						{ok,UserList1};
 					Err ->
 						?ERROR_MSG("ERROR=~p",[Err]),
@@ -133,6 +133,7 @@ handle_cast({route_group_msg,#jid{server=Domain,user=FU}=From,#jid{user=GroupId}
 		end,
 	case Result of
 		{ok,Res} ->
+%% 			?WARNING_MSG("###### begin send group msg :::> GroupId=~p ; member=~p",[GroupId,Res]),
 			case lists:member(FU,Res) of
 				true->
 					%% -record(jid, {user, server, resource, luser, lserver, lresource}).
@@ -263,7 +264,7 @@ route_msg(#jid{user=FromUser}=From,#jid{user=User,server=Domain}=To,Packet,Group
 			case ejabberd_router:route(From, To, RPacket) of
 				ok ->
 					?DEBUG("###### route_group_msg 003 OK :::> {From,To,RPacket}=~p",[{From,To,RPacket}]),
-					aa_hookhandler:user_send_packet_handler(From,To,RPacket),
+					aa_hookhandler:send_message_to_user(From, To, RPacket),
 					{ok,ok};
 				Err ->
 					?DEBUG("###### route_group_msg 003 ERR=~p :::> {From,To,RPacket}=~p",[Err,{From,To,RPacket}]),

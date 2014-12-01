@@ -11,7 +11,7 @@
 
 -define(PUSH_PID_NUM, 20).
 
--define(DBCONNNUM, 20).
+-define(DBCONNNUM, 100).
 
 -define(ETS_ACK_TASK, ets_ack_task).
 
@@ -27,6 +27,7 @@
 	 offline_message_hook_handler/3,
 	 roster_in_subscription_handler/6,
 	 user_receive_packet_handler/4,
+	 send_message_to_user/3,
 	 refresh_bak_info/0,
 	 rlcfg/0
 	]).
@@ -85,7 +86,7 @@ get_text_message_form_packet_result( Body )->
 %% 离线消息处理器
 %% 钩子回调
 offline_message_hook_handler(From, To, Packet) ->
-	?WARNING_MSG("offline_message_hook_handler trigger offline msg push", []),
+	?INFO_MSG("offline_message_hook_handler trigger offline msg push", []),
 	gen_server:cast(?MODULE, {deal_offline_msg, From, To, Packet}),
 	stop.
 
@@ -123,7 +124,7 @@ send_offline_message(From ,To ,Packet,MID,MsgType,N) when N < 3 ->
 	%% 取自配置文件 ejabberd.cfg
 	HTTPService = ejabberd_config:get_local_option({http_server_service_client,Domain}),
 	HTTPTarget = string:concat(HTTPServer,HTTPService),
-	?WARNING_MSG("push msg id ~p", [MID]),
+	?INFO_MSG("push msg id ~p", [MID]),
 	Msg = get_text_message_from_packet( Packet ),
 	{Service,Method,FN,TN,MSG,MSG_ID,MType} = {
 				      list_to_binary("service.uri.pet_user"),
@@ -240,10 +241,10 @@ sync_user(Domain,FromUser,ToUser,SType) ->
 %	true.
 
 %user_send_packet(From, To, Packet) -> ok
-user_send_packet_handler(#jid{user=FU,server=FD}=From, #jid{user = ToUser}=To, Packet) ->
+user_send_packet_handler(#jid{server=FD}=From, To, Packet) ->
 	try
-		?DEBUG("~n************** my_hookhandler user_send_packet_handler >>>>>>>>>>>>>>>~p~n ",[zhiming_debug]),
-		?DEBUG("~n~pFrom=~p ; To=~p ; Packet=~p~n ", [liangchuan_debug,From, To, Packet] ),
+		?WARNING_MSG("~n************** my_hookhandler user_send_packet_handler >>>>>>>>>>>>>>>~p~n ",[zhiming_debug]),
+		?WARNING_MSG("~n~pFrom=~p ; To=~p ; Packet=~p~n ", [liangchuan_debug,From, To, Packet] ),
 		%% From={jid,"cc","test.com","Smack","cc","test.com","Smack"}
 		[_,E|_] = tuple_to_list(Packet),
 		Domain = FD,
@@ -252,44 +253,26 @@ user_send_packet_handler(#jid{user=FU,server=FD}=From, #jid{user = ToUser}=To, P
 				{_,"message",Attr,_} = Packet,
 				?DEBUG("Attr=~p", [Attr] ),
 				D = dict:from_list(Attr),
-				T = dict:fetch("type", D),
 				MT = case dict:is_key("msgtype",D) of true-> dict:fetch("msgtype",D); _-> "" end,
-				%% 理论上讲，这个地方一定要有一个ID，不过如果没有，其实对服务器没影响，但客户端就麻烦了
-				SRC_ID_STR = case dict:is_key("id", D) of true -> dict:fetch("id", D); _ -> "" end,
-				?DEBUG("SRC_ID_STR=~p", [SRC_ID_STR] ),
-				?DEBUG("Type=~p", [T] ),
-				ACK_FROM = case catch ejabberd_config:get_local_option({ack_from ,Domain}) of true -> true; _ -> false end,
-				?DEBUG("ack_from=~p ; Domain=~p ; T=~p ; MT=~p",[ACK_FROM,Domain,T,MT]),
-				SYNCID = SRC_ID_STR++"@"++Domain,
 				
 				server_ack(From,To,Packet),
-				%% 判断是否群聊消息，不是根据 msgtype 判断的，是根据收消息人判断，这个逻辑很关键
-				IS_GROUP_CHAT = case aa_group_chat:is_group_chat(To) of  
-									true when MT=/="msgStatus" ->
-										?DEBUG("###### send_group_chat_msg ###### From=~p ; Domain=~p",[From,Domain]),
-										aa_group_chat:route_group_msg(From,To,Packet),
-										true;
-									true when MT=:="msgStatus" -> false;
-									false -> false 
-								end,
-				?DEBUG("IS_GROUP_CHAT=~p ; SRCID=~p; MT=~p, FU=~p; ACK_FROM=~p",[IS_GROUP_CHAT,SYNCID,MT,FU, ACK_FROM]),
-				if IS_GROUP_CHAT=:=false,ACK_FROM,MT=/=[],MT=/="msgStatus", MT=/="frienddynamicmsg",FU=/="messageack" ->
-%% 						if IS_GROUP_CHAT=:=false,ACK_FROM,MT=/="msgStatus", MT=/="frienddynamicmsg",FU=/="messageack" ->
-					   {M,S,SS} = os:timestamp(),
-					   MsgTime = lists:sublist(erlang:integer_to_list(M*1000000000000+S*1000000+SS),1,13),
-					   {Tag,E,Attr,Body} = Packet,
-					   RAttr0 = [{K,V} || {K, V} <- Attr, K=/="msgTime"],
-					   RAttr1 = [{"msgTime",MsgTime}|RAttr0],
-					   RPacket = {Tag,E,RAttr1,Body},
-					   ?DEBUG("send message trigger store msg ~p", [SYNCID]),
-					   aa_usermsg_handler:store_msg(SYNCID, From, To, RPacket);
-				   IS_GROUP_CHAT=:=false,ACK_FROM,MT=:="msgStatus",ToUser=/="messageack" ->
-					   ?DEBUG("send message trigger del msg ~p", [SYNCID]),
-					   aa_usermsg_handler:del_msg(SYNCID, From),
-					   ack_task({ack,SYNCID});
-				   true ->
-					   skip
+				if MT == "groupchat" ->
+					   GroupId = case dict:is_key("groupid", D) of
+									 true ->
+										 dict:fetch("groupid", D);
+									 _ ->
+										 To#jid.user
+								 end,
+					   aa_group_chat:route_group_msg(From, GroupId, Packet);
+					true -> 
+						send_message_to_user(From, To, Packet)
 				end;
+%% 				case aa_group_chat:is_group_chat(To) of  
+%% 					true when MT=/="msgStatus" ->
+%% 						aa_group_chat:route_group_msg(From, To, Packet);
+%% 					_ -> 
+%% 						send_message_to_user(From, To, Packet)
+%% 				end;
 			_ ->
 				?DEBUG("~p", [skip_00] ),
 				skip
@@ -301,6 +284,33 @@ user_send_packet_handler(#jid{user=FU,server=FD}=From, #jid{user = ToUser}=To, P
 			?ERROR_MSG("user_send_packet_handler_error ~p:~p:> ~p",[ErrType, Reason, Err])
 	end,
 	ok.
+
+send_message_to_user(#jid{user=FU, server = Domain}=From, #jid{user = ToUser}=To, Packet) ->
+	{_,"message",Attr,_} = Packet,
+	?DEBUG("Attr=~p", [Attr] ),
+	D = dict:from_list(Attr),
+	MT = case dict:is_key("msgtype",D) of true-> dict:fetch("msgtype",D); _-> "" end,
+	%% 理论上讲，这个地方一定要有一个ID，不过如果没有，其实对服务器没影响，但客户端就麻烦了
+	SRC_ID_STR = case dict:is_key("id", D) of true -> dict:fetch("id", D); _ -> "" end,
+	?DEBUG("SRC_ID_STR=~p", [SRC_ID_STR] ),
+	SYNCID = SRC_ID_STR++"@"++Domain,
+	if MT=/=[],MT=/="msgStatus", MT=/="frienddynamicmsg",FU=/="messageack" ->
+		   %% 						if IS_GROUP_CHAT=:=false,ACK_FROM,MT=/="msgStatus", MT=/="frienddynamicmsg",FU=/="messageack" ->
+		   {M,S,SS} = os:timestamp(),
+		   MsgTime = lists:sublist(erlang:integer_to_list(M*1000000000000+S*1000000+SS),1,13),
+		   {Tag,E,Attr,Body} = Packet,
+		   RAttr0 = [{K,V} || {K, V} <- Attr, K=/="msgTime"],
+		   RAttr1 = [{"msgTime",MsgTime}|RAttr0],
+		   RPacket = {Tag,E,RAttr1,Body},
+		   ?WARNING_MSG("send message trigger store msg ~p", [SYNCID]),
+		   aa_usermsg_handler:store_msg(SYNCID, From, To, RPacket);
+	   MT=:="msgStatus",ToUser=/="messageack" ->
+		   ?WARNING_MSG("send message trigger del msg ~p", [SYNCID]),
+		   aa_usermsg_handler:del_msg(SYNCID, From),
+		   ack_task({ack,SYNCID});
+	   true ->
+		   skip
+	end.
 
 user_receive_packet_handler(_JID, #jid{user = FU, server=FD}=From, To, Packet) ->
 	[_,E|_] = tuple_to_list(Packet),
@@ -472,22 +482,19 @@ code_change(_OldVsn, State, _Extra) ->
 %% Internal functions
 %% ====================================================================
 
-ack_task({ack,ID})->
-	ack_task({do,ack,ID});
 
-ack_task({do,M,ID})->
+ack_task({ack,ID})->
 	try
-		OBJ = ets:lookup(?ETS_ACK_TASK, ID),
-		case OBJ of
+		case ets:lookup(?ETS_ACK_TASK, ID) of
 			[{ID, ACKTaskPid}] ->
-				ACKTaskPid!M;
+				ACKTaskPid!ack;
 			_ ->
 				skip
 		end
 	catch 
 		_:_-> 
 			Error = erlang:get_stacktrace(),
-			?ERROR_MSG("DO_ACK_TASK_ID=~p ; M=~p ; ERROR=~p.",[ID,M,Error]),
+			?ERROR_MSG("DO_ACK_TASK_ID=~p ; M=~p ; ERROR=~p.",[ID,ack,Error]),
 			ack_err
 	end.
 
@@ -495,10 +502,10 @@ ack_task(ID,#jid{user = User} = From,To,Packet)->
 	?INFO_MSG("user ~p ACK_TASK_~p ::::> START ~p.",[User, ID, self()]),
 	receive 
 		ack ->
-			?WARNING_MSG("ACK_TASK_ ~p ::::> ACK ~p.",[self(), ID]),
+			?INFO_MSG("ACK_TASK_ ~p ::::> ACK ~p.",[self(), ID]),
 			ets:delete(?ETS_ACK_TASK, ID)
 	after ?TIME_OUT -> 
-		?WARNING_MSG("ack ~p trigger offline msg push ~p", [self(),ID]),
+		?INFO_MSG("ack ~p trigger offline msg push ~p", [self(),ID]),
 		ets:delete(?ETS_ACK_TASK, ID),
 		gen_server:cast(?MODULE, {deal_offline_msg, From, To, Packet})
 	end.

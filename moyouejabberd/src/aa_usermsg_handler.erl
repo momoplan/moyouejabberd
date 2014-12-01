@@ -42,7 +42,7 @@
 dump(Jid) ->
 	ValidJid = format_user_data(Jid),
 	F = fun() ->
-				case mnesia:dirty_read(?MY_USER_TABLES, ValidJid, write) of
+				case mnesia:read(?MY_USER_TABLES, ValidJid, write) of
 					[#?MY_USER_TABLES{msg_table = TableName, msg_list_table = RamMsgListTableName}] ->
 						case mnesia:dirty_read(RamMsgListTableName, ValidJid) of
 							[#user_msg_list{msg_list = KeysList}] ->					
@@ -67,7 +67,10 @@ dump(Jid) ->
 						skip
 				end
 		end,
-	mnesia:transaction(F).
+	{T1, _} = erlang:statistics(wall_clock),
+	mnesia:transaction(F),
+	{T2, _} = erlang:statistics(wall_clock),
+	?ERROR_MSG("dump cost time ~p", [T2 - T1]).
 
 load(Jid) ->
 	F = fun() ->
@@ -143,7 +146,7 @@ store_msg(Key, From, To, Packet) ->
 	?INFO_MSG("store msg finish", []).
 
 del_msg(Key, UserJid1) ->
-	?INFO_MSG("aa user msg rcv del msg call ~p", [Key]),
+	?WARNING_MSG("aa user msg rcv del msg call ~p", [Key]),
 	delete_message(Key,format_user_data(UserJid1)),
 	aa_msg_statistic:del(),
 	?INFO_MSG("del msg finish", []).
@@ -425,6 +428,7 @@ store_message(Key, From, To, Packet) ->
 %% 	mnesia:dirty_write(TableName, Data).
 
 delete_message(Key, UserJid) ->	
+	?WARNING_MSG("delete message start", []),
 	F = fun() ->
 				case mnesia:read(?MY_USER_TABLES, UserJid,write) of
 					[TableInfo] ->
@@ -438,13 +442,14 @@ delete_message(Key, UserJid) ->
 									_ ->
 										NewListData = #user_msg_list{id = UserJid, msg_list = lists:delete(Key, KeyList)}
 								end,
-								mnesia:write(ListTableName, NewListData);
+								mnesia:write(ListTableName, NewListData, write);
 							_ ->
 								skip
 						end;
 					_ ->
 						skip
-				end
+				end,
+				?WARNING_MSG("delete message finish", [])
 		end,	
 	mnesia:transaction(F).
 
