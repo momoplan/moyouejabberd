@@ -68,7 +68,13 @@ dump(Jid) ->
 				end
 		end,
 	{T1, _} = erlang:statistics(wall_clock),
-	mnesia:transaction(F),
+%% 	mnesia:transaction(F),
+	case mnesia:transaction(F) of
+		{atomic, Result} ->
+			?INFO_MSG("dump player ~p message to db correctly: ~p", [Jid#jid.user, Result]);
+		{aborted, Reason} ->
+			?ERROR_MSG("Problem dumping player ~p message to db, Reason:~p", [Jid#jid.user,Reason])
+	end,
 	{T2, _} = erlang:statistics(wall_clock),
 	?ERROR_MSG("dump cost time ~p", [T2 - T1]).
 
@@ -79,7 +85,13 @@ load(Jid) ->
 					 get_user_tables(UserJid),
 				load_message_from_mysql(UserJid, TableName, RamMsgListTableName)
 		end,
-	mnesia:transaction(F).
+%% 	mnesia:transaction(F),
+	case mnesia:transaction(F) of
+		{atomic, Result} ->
+			?INFO_MSG("load user mssage correctly: ~p", [Result]);
+		{aborted, Reason} ->
+			?ERROR_MSG("Problem loading message form db, player:~p Reason:~p", [Jid, Reason])
+	end.
 
 load_all() ->
 	NodeNameList = atom_to_list(node()),
@@ -416,10 +428,10 @@ store_message(Key, From, To, Packet) ->
 		end,
 	case mnesia:transaction(F) of
 		{atomic, Result} ->
-		    ?INFO_MSG("packet save correctly: ~p", [Result]);
+			?INFO_MSG("packet save correctly: ~p", [Result]);
 		{aborted, Reason} ->
-		    ?ERROR_MSG("Problem saving packet:~n~p  reason:~p", [Packet,Reason])
-	    end.
+			?ERROR_MSG("Problem saving packet:~n~p  reason:~p", [Packet,Reason])
+	end.
 
 	
 

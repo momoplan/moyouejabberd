@@ -238,7 +238,7 @@ send_message_to_user(#jid{user=FU, server = Domain}=From, #jid{user = ToUser}=To
 	?DEBUG("SRC_ID_STR=~p", [SRC_ID_STR] ),
 	SYNCID = SRC_ID_STR++"@"++Domain,
 	if MT=/=[],MT=/="msgStatus", MT=/="frienddynamicmsg",FU=/="messageack" ->
-		   %% 						if IS_GROUP_CHAT=:=false,ACK_FROM,MT=/="msgStatus", MT=/="frienddynamicmsg",FU=/="messageack" ->
+%% 			if IS_GROUP_CHAT=:=false,ACK_FROM,MT=/="msgStatus", MT=/="frienddynamicmsg",FU=/="messageack" ->
 		   {M,S,SS} = os:timestamp(),
 		   MsgTime = lists:sublist(erlang:integer_to_list(M*1000000000000+S*1000000+SS),1,13),
 		   {Tag,E,Attr,Body} = Packet,
