@@ -416,7 +416,7 @@ store_message(Key, From, To, Packet) ->
 		end,
 	case mnesia:transaction(F) of
 		{atomic, Result} ->
-		    ?INFO_MSG("packet save correctly: ~p", [Packet]);
+		    ?INFO_MSG("packet save correctly: ~p", [Result]);
 		{aborted, Reason} ->
 		    ?ERROR_MSG("Problem saving packet:~n~p  reason:~p", [Packet,Reason])
 	    end.
@@ -460,9 +460,9 @@ delete_message(Key, UserJid) ->
 		end,	
 	case mnesia:transaction(F) of
 		{atomic, Result} ->
-		    ?INFO_MSG("packet delete correctly: ~p", [Packet]);
+		    ?INFO_MSG("packet delete correctly: ~p", [Result]);
 		{aborted, Reason} ->
-		    ?ERROR_MSG("Problem deleting packet:~n~p  reason:~p", [Packet,Reason])
+		    ?ERROR_MSG("Problem deleting message key ~p for user ~p  reason:~p", [Key, UserJid,Reason])
 	    end.
 
 format_user_data(Jid) ->
@@ -473,7 +473,7 @@ get_userpid_name(#jid{user = Uid, server = Domain}) ->
 	list_to_atom(Uid ++ "@" ++ Domain).
 
 %% 直接传表进来是因为外层直接做了锁，内层不需要关心锁的事情
-load_message_from_mysql(#jid{user = User} = Jid, MsgTableName, ListTableName) ->
+load_message_from_mysql(Jid, MsgTableName, ListTableName) ->
 	LoadKeyList = load_msg_to_mnesia(MsgTableName, Jid),
 	rebuild_user_msglist(Jid, ListTableName,LoadKeyList),
 	clear_user_mysql_data(Jid),
