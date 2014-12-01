@@ -17,37 +17,20 @@ build_packet(<<"term">>,Content)->
         Packet.
 
 process({#aaRequest{sn=SN}=Args})->
-        try
-                Packet = build_packet(Args#aaRequest.type,Args#aaRequest.content),
-                Nodes = [node()|nodes()],
-                EjabberdNodes = list_to_tuple([N||N<-Nodes,string:str(atom_to_list(N),"ejabberd")=:=1]),
-                Len = tuple_size(EjabberdNodes),
-                {_,Seed,_} = now(),
-                Index = (Seed rem Len)+1,
-                TaskNode = element(Index,EjabberdNodes),
-                ?INFO_MSG("aa_info_server_process :::> SN=~p ; TaskNode=~p ; Index=~p ; Len=~p ; Seed=~p",[SN,TaskNode,Index,Len,Seed]),
-                run(Packet),
-                "OK"
-        catch
-                _:_->
-                        Err = erlang:get_stacktrace(),
-                        ?ERROR_MSG("aa_info_server_process exception :::> SN=~p ; Err=~p",[SN,Err]),
-                        "ERROR: "++Err
-        end.
-
-
+	    case build_packet(Args#aaRequest.type,Args#aaRequest.content) of
+			{error,Reason} -> 
+				?ERROR_MSG("aa_info_server_process xmpp exception :::> SN=~p ;Content = ~p; Err=~p",[SN,Args#aaRequest.content,Reason]);
+			Packet -> 
+				run(Packet)
+		end.
 
 run(Packet) ->
         try
                 ?DEBUG("aa_info_server ::: Packet ====> ~p",[Packet]),
                 From = jlib:string_to_jid(xml:get_tag_attr_s("from", Packet)),
                 To = jlib:string_to_jid(xml:get_tag_attr_s("to", Packet)),
-                {xmlelement, "message", _Attrs, _Kids} = Packet,
-				aa_hookhandler:user_send_packet_handler(From, To, Packet);
-                case ejabberd_router:route(From, To, Packet) of
-                        ok -> aa_hookhandler:user_send_packet_handler(From,To,Packet);
-                        Err -> "Error: "++Err
-                end
+				aa_hookhandler:user_send_packet_handler(From, To, Packet),
+                ejabberd_router:route(From, To, Packet)
         catch
                 _:Clazz ->
                         ?ERROR_MSG("exception :::> Packet=~p",[Packet]),
