@@ -25,7 +25,6 @@
 	 start_link/0,
 	 user_send_packet_handler/3,
 	 offline_message_hook_handler/3,
-	 roster_in_subscription_handler/6,
 	 user_receive_packet_handler/4,
 	 send_message_to_user/3,
 	 refresh_bak_info/0,
@@ -39,7 +38,6 @@ stop(Host) ->
 	lists:foreach(
 	  fun(Host) ->
 			  ejabberd_hooks:delete(user_send_packet,Host,?MODULE, user_send_packet_handler ,80),
-			  ejabberd_hooks:delete(roster_in_subscription,Host,?MODULE, roster_in_subscription_handler ,90),
 			  ejabberd_hooks:delete(offline_message_hook, Host, ?MODULE, offline_message_hook_handler, 45),
 			  ejabberd_hooks:delete(user_receive_packet, Host, ?MODULE, user_receive_packet_handler, 45)
 
@@ -186,61 +184,6 @@ send_offline_message(From ,To ,Packet,MID,MsgType,3) ->
 	?ERROR_MSG("[ERROR] offline_message_hook_handler_lost ~p",[{From ,To ,Packet,MID,MsgType,3}]),
 	ok.
 
-%roster_in_subscription(Acc, User, Server, JID, SubscriptionType, Reason) -> bool()
-roster_in_subscription_handler(Acc, User, Server, JID, SubscriptionType, Reason) ->
-	?DEBUG("~n~p; Acc=~p ; User=~p~n Server=~p ; JID=~p ; SubscriptionType=~p ; Reason=~p~n ", [liangchuan_debug,Acc, User, Server, JID, SubscriptionType, Reason] ),
-	{jid,ToUser,Domain,_,_,_,_}=JID,
-	?DEBUG("XXXXXXXX===~p",[SubscriptionType]),
-	case lists:member(SubscriptionType,[subscribe,subscribed,unsubscribed]) of 
-		true -> 
-			sync_user(Domain,User,ToUser,SubscriptionType);
-		_ ->
-			ok
-	end,
-	true.
-
-%% 好友同步
-sync_user(Domain,FromUser,ToUser,SType) ->
-	HTTPServer =  ejabberd_config:get_local_option({http_server,Domain}),
-	HTTPService = ejabberd_config:get_local_option({http_server_service_client,Domain}),
-	HTTPTarget = string:concat(HTTPServer,HTTPService),
-	{Service,Method,Channel} = {list_to_binary("service.uri.pet_user"),list_to_binary("addOrRemoveFriend"),list_to_binary("9")},
-	{BID,AID,ST} = {list_to_binary(FromUser),list_to_binary(ToUser),list_to_binary(atom_to_list(SType))},
-	%% 2013-10-22 : 新的请求协议如下，此处不必关心，success=true 即成功
-	%% INPUT {"SubscriptionType":"", "aId":"", "bId":""}
-	%% OUTPUT {"success":true,"entity":"OK" }
-	PostBody = {obj,[{"service",Service},{"method",Method},{"channel",Channel},{"params",{obj,[{"SubscriptionType",ST},{"aId",AID},{"bId",BID}]}}]},	
-	JsonParam = rfc4627:encode(PostBody),
-	ParamBody = "body="++JsonParam,
-	URL = HTTPServer++HTTPService++"?"++ParamBody,
-	?DEBUG("~p: ~p~n ",[liangchuan_debug,URL]),
-	Form = lists:concat([ParamBody]),
-	case httpc:request(post,{ HTTPTarget, [], ?HTTP_HEAD, Form },[],[] ) of   
-		{ok, {_,_,Body}} ->
-			case rfc4627:decode(Body) of
-				{ok , Obj , _Re } ->
-					%% 请求发送出去以后，如果返回 success=false 那么记录一个异常日志就可以了，这个方法无论如何都要返回 ok	
-					case rfc4627:get_field(Obj,"success") of
-						{ok,false} ->	
-							{ok,Entity} = rfc4627:get_field(Obj,"entity"),
-							?DEBUG("liangc-sync-user error: ~p~n",[binary_to_list(Entity)]);
-						_ ->
-							false
-					end;
-				_ -> 
-					false
-			end ;
-		{error, Reason} ->
-			?DEBUG("[ERROR] cause ~p~n",[Reason])
-	end,
-	?DEBUG("[--OKOKOKOK--] ~p was done.~n",[addOrRemoveFriend]),
-	ok.
-
-%roster_out_subscription(Acc, User, Server, JID, SubscriptionType, Reason) -> bool()
-%roster_out_subscription_handler(Acc, User, Server, JID, SubscriptionType, Reason) ->
-%	true.
-
-%user_send_packet(From, To, Packet) -> ok
 user_send_packet_handler(#jid{server=FD}=From, To, Packet) ->
 	try
 		?WARNING_MSG("~n************** my_hookhandler user_send_packet_handler >>>>>>>>>>>>>>>~p~n ",[zhiming_debug]),
@@ -358,9 +301,6 @@ init([]) ->
 	  fun(Host) ->
 			  ?INFO_MSG("#### _begin Host=~p~n",[Host]),
 			  ejabberd_hooks:add(user_send_packet,Host,?MODULE, user_send_packet_handler ,80),
-			  ?INFO_MSG("#### user_send_packet Host=~p~n",[Host]),
-			  ejabberd_hooks:add(roster_in_subscription,Host,?MODULE, roster_in_subscription_handler ,90),
-			  ?INFO_MSG("#### roster_in_subscription Host=~p~n",[Host]),
 			  ejabberd_hooks:add(offline_message_hook, Host, ?MODULE, offline_message_hook_handler, 45),
 			  ?INFO_MSG("#### offline_message_hook Host=~p~n",[Host]),
 			  ejabberd_hooks:add(user_receive_packet, Host, ?MODULE, user_receive_packet_handler, 45),
