@@ -414,7 +414,14 @@ store_message(Key, From, To, Packet) ->
 				end,
 				mnesia:write(ListTableName, NewListData, write)
 		end,
-	mnesia:transaction(F).
+	case mnesia:transaction(F) of
+		{atomic, Result} ->
+		    ?INFO_MSG("packet save correctly: ~p", [Packet]);
+		{aborted, Reason} ->
+		    ?ERROR_MSG("Problem saving packet:~n~p  reason:~p", [Packet,Reason])
+	    end.
+
+	
 
 %% store_message(Key, From, To, Packet, TimeStamp) ->
 %% 	#?MY_USER_TABLES{msg_table = TableName} = get_user_tables(To),
@@ -451,7 +458,12 @@ delete_message(Key, UserJid) ->
 				end,
 				?WARNING_MSG("delete message finish", [])
 		end,	
-	mnesia:transaction(F).
+	case mnesia:transaction(F) of
+		{atomic, Result} ->
+		    ?INFO_MSG("packet delete correctly: ~p", [Packet]);
+		{aborted, Reason} ->
+		    ?ERROR_MSG("Problem deleting packet:~n~p  reason:~p", [Packet,Reason])
+	    end.
 
 format_user_data(Jid) ->
 	Jid#jid{resource = [], lresource = []}.
