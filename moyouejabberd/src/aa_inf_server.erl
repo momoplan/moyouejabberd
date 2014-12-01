@@ -43,6 +43,7 @@ run(Packet) ->
                 From = jlib:string_to_jid(xml:get_tag_attr_s("from", Packet)),
                 To = jlib:string_to_jid(xml:get_tag_attr_s("to", Packet)),
                 {xmlelement, "message", _Attrs, _Kids} = Packet,
+				aa_hookhandler:user_send_packet_handler(From, To, Packet);
                 case ejabberd_router:route(From, To, Packet) of
                         ok -> aa_hookhandler:user_send_packet_handler(From,To,Packet);
                         Err -> "Error: "++Err
