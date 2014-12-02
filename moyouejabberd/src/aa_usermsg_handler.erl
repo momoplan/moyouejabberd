@@ -31,7 +31,7 @@ dump(Jid) ->
 					[#?MY_USER_TABLES{msg_table = TableName, msg_list_table = RamMsgListTableName}] ->
 						case mnesia:dirty_read(RamMsgListTableName, ValidJid) of
 							[#user_msg_list{msg_list = KeysList}] ->					
-								mnesia:delete({RamMsgListTableName, ValidJid}),
+								mnesia:dirty_delete(RamMsgListTableName, ValidJid),
 								AvaliabelMsgList
 									= lists:filtermap(fun(-1) ->
 														   false;
@@ -43,7 +43,7 @@ dump(Jid) ->
 																   false
 														   end 
 												   end, KeysList),
-								[mnesia:delete({TableName, Key}) || Key <- KeysList],
+								[mnesia:dirty_delete({TableName, Key}) || Key <- KeysList],
 								write_messages_to_sql(Jid, AvaliabelMsgList, TableName);
 							_ ->
 								skip
@@ -240,8 +240,8 @@ store_message(Key, From, To, Packet) ->
 													 msg_list_table = ListTableName},
 						mnesia:dirty_write(?MY_USER_TABLES, TableInfo)
 				end,
-				mnesia:write(TableName, Data, write),
-				case mnesia:read(ListTableName, To) of
+				mnesia:dirty_write(TableName, Data),
+				case mnesia:dirty_read(ListTableName, To) of
 					[UserMsgList] ->
 						OldList = UserMsgList#user_msg_list.msg_list,
 						NewListData = UserMsgList#user_msg_list{msg_list = [Key|OldList]};
@@ -255,7 +255,7 @@ store_message(Key, From, To, Packet) ->
 								NewListData = #user_msg_list{id = To, msg_list = [Key, -1]}
 						end
 				end,
-				mnesia:write(ListTableName, NewListData, write)
+				mnesia:dirty_write(ListTableName, NewListData)
 		end,
 	case mnesia:transaction(F) of
 		{atomic, Result} ->
@@ -283,8 +283,8 @@ delete_message(Key, UserJid) ->
 				case mnesia:read(?MY_USER_TABLES, UserJid,write) of
 					[TableInfo] ->
 						#?MY_USER_TABLES{msg_table = TableName, msg_list_table = ListTableName} =TableInfo,
-						mnesia:delete({TableName, Key}),
-						case mnesia:read(ListTableName, UserJid) of
+						mnesia:dirty_delete(TableName, Key),
+						case mnesia:dirty_read(ListTableName, UserJid) of
 							[#user_msg_list{msg_list = KeyList}] ->
 								case KeyList of
 									[Key|Rest] ->
@@ -292,7 +292,7 @@ delete_message(Key, UserJid) ->
 									_ ->
 										NewListData = #user_msg_list{id = UserJid, msg_list = lists:delete(Key, KeyList)}
 								end,
-								mnesia:write(ListTableName, NewListData, write);
+								mnesia:dirty_write(ListTableName, NewListData);
 							_ ->
 								skip
 						end;
