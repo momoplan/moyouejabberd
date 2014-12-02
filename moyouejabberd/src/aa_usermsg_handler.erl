@@ -134,28 +134,33 @@ get_offline_msg(UserJid1) ->
 					 get_user_tables(UserJid),
 				{T1, T2}
 		end,
-	{atomic, {TableName, RamMsgListTableName}} = mnesia:di(F),
-	case mnesia:dirty_read(RamMsgListTableName, UserJid) of
-		[] ->
-			%% 内存里没有任何列表的数据，这时候可以认为需要到数据库里查找一下数据
-			?WARNING_MSG("get user offline msg loop 1", []),
-			aa_usermsg_handler:load(UserJid),
-			aa_usermsg_handler:get_offline_msg(UserJid);
-		[#user_msg_list{msg_list = []}] ->
+	case mnesia:transaction(F) of
+		{aborted, Reason} ->
+			?ERROR_MSG("get offline for user ~p, Reason:~p", [UserJid1, Reason]),
 			{ok, []};
-		[#user_msg_list{msg_list = KeysList} = UM] ->
-			case lists:reverse(KeysList) of
-				[-1|_] ->%% 有一部分数据被写入数据库了	
+		{atomic, {TableName, RamMsgListTableName}} ->
+			case mnesia:dirty_read(RamMsgListTableName, UserJid) of
+				[] ->
+					%% 内存里没有任何列表的数据，这时候可以认为需要到数据库里查找一下数据
+					?WARNING_MSG("get user offline msg loop 1", []),
 					aa_usermsg_handler:load(UserJid),
 					aa_usermsg_handler:get_offline_msg(UserJid);
+				[#user_msg_list{msg_list = []}] ->
+					{ok, []};
+				[#user_msg_list{msg_list = KeysList} = UM] ->
+					case lists:reverse(KeysList) of
+						[-1|_] ->%% 有一部分数据被写入数据库了	
+							aa_usermsg_handler:load(UserJid),
+							aa_usermsg_handler:get_offline_msg(UserJid);
+						_ ->
+							MsgsIds = recheck_message_ids(TableName, RamMsgListTableName, UM),
+							%% 保证有消息，保证是倒序的
+							Msgs = load_mnesia_messages(MsgsIds, TableName),						
+							{ok, Msgs}
+					end;
 				_ ->
-					MsgsIds = recheck_message_ids(TableName, RamMsgListTableName, UM),
-					%% 保证有消息，保证是倒序的
-					Msgs = load_mnesia_messages(MsgsIds, TableName),						
-					{ok, Msgs}
-			end;
-		_ ->
-			{ok, []}
+					{ok, []}
+			end
 	end.
 
 recheck_message_ids(TableName, RamMsgListTableName, #user_msg_list{msg_list = KeysList} = OldListData) ->
@@ -231,7 +236,7 @@ store_message(Key, From, To, Packet) ->
 				case mnesia:read(?MY_USER_TABLES, To,write) of
 					[ #?MY_USER_TABLES{msg_table = TableName, msg_list_table = ListTableName}] ->
 						skip;
-					_ ->
+					[] ->
 						NodeNameList = atom_to_list(node()),
 						TableName = list_to_atom(NodeNameList ++ "user_message"),			
 						ListTableName = list_to_atom(NodeNameList ++ "user_msglist"),
