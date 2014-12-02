@@ -19,25 +19,10 @@
 -export([start_link/1,
 		 store_msg/4,
 		 del_msg/2,
-		 message_status_info/0,
 		 get_offline_msg/1]).
 
 -export([dump/1,
-		load/1,
-		 load_all/0,
-		 rebuild_list_from_msg/0]).
-
--export([delete_msg_by_from/1,
-		 delete_msg_by_from/2,
-		 delete_msg_by_from1/1]).
-
-%% dump(Jid) ->
-%% 	{Pid, Node} = get_userpid(Jid),
-%% 	gen_server:call({Pid, Node}, {dump, Jid}).
-%% 
-%% load(Jid) ->
-%% 	{Pid, Node} = get_userpid(Jid),
-%% 	gen_server:call({Pid, Node}, {load, Jid}).
+		load/1]).
 
 dump(Jid) ->
 	ValidJid = format_user_data(Jid),
@@ -93,27 +78,6 @@ load(Jid) ->
 			?ERROR_MSG("Problem loading message form db, player:~p Reason:~p", [Jid, Reason])
 	end.
 
-load_all() ->
-	NodeNameList = atom_to_list(node()),
-	RamMsgListTableName = list_to_atom(NodeNameList ++ "user_msglist"),
-
-	UserKyes = mnesia:dirty_all_keys(RamMsgListTableName),
-	lists:foreach(fun(Key) ->
-						  case mnesia:dirty_read(RamMsgListTableName, Key) of
-							  [#user_msg_list{msg_list = []}] ->
-								  skip;
-							  [#user_msg_list{msg_list = KeysList}] ->
-								  case lists:reverse(KeysList) of
-									  [-1|_] ->%% 有一部分数据被写入数据库了					
-										  load(Key);
-									  _ ->
-										  skip
-								  end;
-							  _ ->
-								  skip
-						  end
-				  end, UserKyes).
-
 start_link(_Jid) ->
 	ok.
 
@@ -155,23 +119,22 @@ store_msg(Key, From, To, Packet) ->
 	?INFO_MSG("aa user msg rcv store msg call ~p", [{Key, From, To}]),	
 	store_message(Key, format_user_data(From), format_user_data(To), Packet),
 	aa_msg_statistic:add(),
-	?INFO_MSG("store msg finish", []).
+	?INFO_MSG("store msg finish ~p", [Key]).
 
 del_msg(Key, UserJid1) ->
-	?WARNING_MSG("aa user msg rcv del msg call ~p", [Key]),
+	?INFO_MSG("aa user msg rcv del msg call ~p", [Key]),
 	delete_message(Key,format_user_data(UserJid1)),
 	aa_msg_statistic:del(),
-	?INFO_MSG("del msg finish", []).
+	?INFO_MSG("del msg finish ~p", [Key]).
 
 get_offline_msg(UserJid1) ->
-	?WARNING_MSG("get offline msg", []),
 	UserJid = format_user_data(UserJid1),
 	F = fun() ->
 				#?MY_USER_TABLES{msg_table = T1, msg_list_table = T2} =
 					 get_user_tables(UserJid),
 				{T1, T2}
 		end,
-	{atomic, {TableName, RamMsgListTableName}} = mnesia:transaction(F),
+	{atomic, {TableName, RamMsgListTableName}} = mnesia:di(F),
 	case mnesia:dirty_read(RamMsgListTableName, UserJid) of
 		[] ->
 			%% 内存里没有任何列表的数据，这时候可以认为需要到数据库里查找一下数据
@@ -184,7 +147,6 @@ get_offline_msg(UserJid1) ->
 			case lists:reverse(KeysList) of
 				[-1|_] ->%% 有一部分数据被写入数据库了	
 					aa_usermsg_handler:load(UserJid),
-					?WARNING_MSG("get user offline msg loop 2", []),
 					aa_usermsg_handler:get_offline_msg(UserJid);
 				_ ->
 					MsgsIds = recheck_message_ids(TableName, RamMsgListTableName, UM),
@@ -220,137 +182,6 @@ load_mnesia_messages(MsgsIds, TableName) ->
 								MList
 						end
 				end, [], MsgsIds).
-
-message_status_info() ->
-	NodeNameList = atom_to_list(node()),
-	RamMsgTableName = list_to_atom(NodeNameList ++ "user_message"),
-	RamMsgListTableName = list_to_atom(NodeNameList ++ "user_msglist"),
-	
-	ets:new(tmp_from_data, [named_table, public, set]),
-	ets:new(tmp_to_data, [named_table, public, set]),
-	Keys = mnesia:dirty_all_keys(RamMsgTableName),
-	lists:foreach(fun(Key) ->
-						  case mnesia:dirty_read(RamMsgTableName, Key) of
-							  [#user_msg{from = From}] ->
-								  case ets:lookup(tmp_from_data, From) of
-									  [] ->
-										  ets:insert(tmp_from_data, {From, 1});
-									  [{From, Num}] ->
-										  ets:insert(tmp_from_data, {From, Num + 1})
-								  end;
-							  _ ->
-								  skip
-						  end
-				  end, Keys),
-	
-	UserKyes = mnesia:dirty_all_keys(RamMsgListTableName),
-	lists:foreach(fun(Key) ->
-						  case mnesia:dirty_read(RamMsgListTableName, Key) of
-							  [#user_msg_list{msg_list = MsgList}] ->
-								  ets:insert(tmp_to_data, {Key, length(MsgList)});
-							  _ ->
-								  skip
-						  end
-				  end, UserKyes),
-	
-	FromDatas = ets:tab2list(tmp_from_data),
-	FromDatas1 = lists:keysort(2, FromDatas),
-	FromDatas2 = lists:sublist(lists:reverse(FromDatas1), 50),
-	
-	ToData = ets:tab2list(tmp_to_data),
-	ToData1 = lists:keysort(2, ToData),
-	ToData2 = lists:sublist(lists:reverse(ToData1), 50),
-	ets:delete(tmp_to_data),
-	ets:delete(tmp_from_data),
-	
-	{ok, FromDatas2, ToData2}.
-
-delete_msg_by_from({Uid, Hours}) ->
-	[ delete_msg_by_from(Node, {Uid, Hours}) || Node <- [node()|nodes()]];
-delete_msg_by_from(UId) ->
-	[ delete_msg_by_from(Node, UId) || Node <- [node()|nodes()]].
-delete_msg_by_from(Node, Info) ->
-	spawn(fun() ->
-				  rpc:call(Node,aa_usermsg_handler,delete_msg_by_from1,[Info])
-		  end).
-
-delete_msg_by_from1({UId, Hours}) ->
-	Pid = erlang:whereis(aa_usermsg_handler),
-	Now = unixtime(),
-	ExpireTime = Now - Hours * 3600,
-	case is_pid(Pid) of
-		true ->
-			NodeNameList = atom_to_list(node()),
-			RamMsgTableName = list_to_atom(NodeNameList ++ "user_message"),
-			Keys = mnesia:dirty_all_keys(RamMsgTableName),
-			lists:foreach(fun(Key) ->
-								  case mnesia:dirty_read(RamMsgTableName, Key) of
-									  [#user_msg{from = UserJid, timestamp = TS}] ->
-										  if UserJid#jid.user == UId andalso TS < ExpireTime->
-												 mnesia:dirty_delete(RamMsgTableName, Key);
-											 true ->
-												 skip
-										  end;
-									  _ ->
-										  skip
-								  end
-						  end, Keys);
-		_ ->
-			skip
-	end;
-
-delete_msg_by_from1(UId) ->
-	Pid = erlang:whereis(aa_usermsg_handler),
-	case is_pid(Pid) of
-		true ->
-			NodeNameList = atom_to_list(node()),
-			RamMsgTableName = list_to_atom(NodeNameList ++ "user_message"),
-			Keys = mnesia:dirty_all_keys(RamMsgTableName),
-			lists:foreach(fun(Key) ->
-								  case mnesia:dirty_read(RamMsgTableName, Key) of
-									  [#user_msg{from = UserJid}] ->
-										  if UserJid#jid.user == UId ->
-												 mnesia:dirty_delete(RamMsgTableName, Key);
-											 true ->
-												 skip
-										  end;
-									  _ ->
-										  skip
-								  end
-						  end, Keys);
-		_ ->
-			skip
-	end.
-
-rebuild_list_from_msg() ->
-	NodeNameList = atom_to_list(node()),
-	RamMsgTableName = list_to_atom(NodeNameList ++ "user_message"),
-	RamMsgListTableName = list_to_atom(NodeNameList ++ "user_msglist"),
-	
-%% 	ets:new(tmp_from_data, [named_table, public, set]),
-	ets:new(tmp_to_data, [named_table, public, set]),
-	Keys = mnesia:dirty_all_keys(RamMsgTableName),
-	lists:foreach(fun(Key) ->
-						  case mnesia:dirty_read(RamMsgTableName, Key) of
-							  [#user_msg{to = To} = Msg] ->
-								  case ets:lookup(tmp_to_data, To) of
-									  [] ->
-										  ets:insert(tmp_to_data, {To, [Msg]});
-									  [{To, MList}] ->
-										  ets:insert(tmp_to_data, {To, [Msg|MList]})
-								  end;
-							  _ ->
-								  skip
-						  end
-				  end, Keys),
-	
-	MsgList = [{To, lists:reverse(lists:keysort(#user_msg.timestamp, List))} || {To, List} <- ets:tab2list(tmp_to_data)],
-	
-	[begin KeysList = [Key || #user_msg{id = Key} <- MList],
-		   NewData = #user_msg_list{id = To, msg_list = KeysList},
-		   mnesia:dirty_write(RamMsgListTableName, NewData)
-	 end || {To, MList} <- MsgList],
-	ets:delete(tmp_to_data).
 
 %% ====================================================================
 %% Internal functions
@@ -588,13 +419,6 @@ implode(S, [H | T], NList) ->
 %% term序列化，term转换为bitstring格式，e.g., [{a},1] => <<"[{a},1]">>
 term_to_bitstring(Term) ->
     erlang:list_to_bitstring(io_lib:format("~p", [Term])).
-term_to_bitstring(Term, Default) ->
-	case term_to_bitstring(Term) of
-		<<"undefined">> ->
-			Default;
-		X ->
-			X
-	end.
 
 
 %% term反序列化，string转换为term，e.g., "[{a},1]"  => [{a},1]
@@ -608,14 +432,6 @@ string_to_term(String) ->
         _Error ->
             undefined
     end.
-
-bitstring_to_term(BitString, Default) ->
-	case bitstring_to_term(BitString) of
-		undefined ->
-			Default;
-		R ->
-			R
-	end.
 
 %% term反序列化，bitstring转换为term，e.g., <<"[{a},1]">>  => [{a},1]
 bitstring_to_term(undefined) -> undefined;
