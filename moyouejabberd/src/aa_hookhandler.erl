@@ -185,6 +185,7 @@ send_offline_message(From ,To ,Packet,MID,MsgType,3) ->
 	ok.
 
 user_send_packet_handler(#jid{server=FD}=From, To, Packet) ->
+	?WARNING_MSG("user ~p receive ack from ~p content ~p", [To, From, Packet]),
 	try
 		?DEBUG("~n************** my_hookhandler user_send_packet_handler >>>>>>>>>>>>>>>~p~n ",[zhiming_debug]),
 		?DEBUG("~n~pFrom=~p ; To=~p ; Packet=~p~n ", [liangchuan_debug,From, To, Packet] ),
@@ -256,10 +257,10 @@ send_message_to_user(#jid{user=FU, server = Domain}=From, #jid{user = ToUser}=To
 	end.
 
 user_receive_packet_handler(_JID, #jid{user = FU, server=FD}=From, To, Packet) ->
+	?WARNING_MSG("user ~p receive ack from ~p content ~p", [To, From, Packet]),
 	[_,E|_] = tuple_to_list(Packet),
 	Domain = FD,
 	if FU == "messageack" ->
-		   ?WARNING_MSG("user ~p receive ack from system content ~p", [To, Packet]),
 		   skip;
 	   true ->
 		   case E of 
@@ -273,9 +274,6 @@ user_receive_packet_handler(_JID, #jid{user = FU, server=FD}=From, To, Packet) -
 						  SYNCID = SRC_ID_STR++"@"++Domain,
 						  TPid = erlang:spawn(fun()-> ack_task(SYNCID,From,To,Packet) end),
 						  ets:insert(?ETS_ACK_TASK, {SYNCID, TPid});
-					  MT == "msgStatus" ->
-						  ?WARNING_MSG("user ~p receive ack from ~p content ~p", [To, From, Packet]),
-						  skip;
 					  true ->
 						  skip
 				   end;
