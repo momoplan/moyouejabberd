@@ -186,8 +186,8 @@ send_offline_message(From ,To ,Packet,MID,MsgType,3) ->
 
 user_send_packet_handler(#jid{server=FD}=From, To, Packet) ->
 	try
-		?WARNING_MSG("~n************** my_hookhandler user_send_packet_handler >>>>>>>>>>>>>>>~p~n ",[zhiming_debug]),
-		?WARNING_MSG("~n~pFrom=~p ; To=~p ; Packet=~p~n ", [liangchuan_debug,From, To, Packet] ),
+		?DEBUG("~n************** my_hookhandler user_send_packet_handler >>>>>>>>>>>>>>>~p~n ",[zhiming_debug]),
+		?DEBUG("~n~pFrom=~p ; To=~p ; Packet=~p~n ", [liangchuan_debug,From, To, Packet] ),
 		%% From={jid,"cc","test.com","Smack","cc","test.com","Smack"}
 		[_,E|_] = tuple_to_list(Packet),
 		Domain = FD,
@@ -245,10 +245,10 @@ send_message_to_user(#jid{user=FU, server = Domain}=From, #jid{user = ToUser}=To
 		   RAttr0 = [{K,V} || {K, V} <- Attr, K=/="msgTime"],
 		   RAttr1 = [{"msgTime",MsgTime}|RAttr0],
 		   RPacket = {Tag,E,RAttr1,Body},
-		   ?WARNING_MSG("send message trigger store msg ~p", [SYNCID]),
+		   ?DEBUG("send message trigger store msg ~p", [SYNCID]),
 		   aa_usermsg_handler:store_msg(SYNCID, From, To, RPacket);
 	   MT=:="msgStatus",ToUser=/="messageack" ->
-		   ?WARNING_MSG("send message trigger del msg ~p", [SYNCID]),
+		   ?DEBUG("send message trigger del msg ~p", [SYNCID]),
 		   aa_usermsg_handler:del_msg(SYNCID, From),
 		   ack_task({ack,SYNCID});
 	   true ->
@@ -259,6 +259,7 @@ user_receive_packet_handler(_JID, #jid{user = FU, server=FD}=From, To, Packet) -
 	[_,E|_] = tuple_to_list(Packet),
 	Domain = FD,
 	if FU == "messageack" ->
+		   ?WARNING_MSG("user ~p receive ack from system content ~p", [To, Packet]),
 		   skip;
 	   true ->
 		   case E of 
@@ -272,6 +273,9 @@ user_receive_packet_handler(_JID, #jid{user = FU, server=FD}=From, To, Packet) -
 						  SYNCID = SRC_ID_STR++"@"++Domain,
 						  TPid = erlang:spawn(fun()-> ack_task(SYNCID,From,To,Packet) end),
 						  ets:insert(?ETS_ACK_TASK, {SYNCID, TPid});
+					  MT == "msgStatus" ->
+						  ?WARNING_MSG("user ~p receive ack from ~p content ~p", [To, From, Packet]),
+						  skip;
 					  true ->
 						  skip
 				   end;
