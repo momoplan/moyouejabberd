@@ -122,7 +122,6 @@ send_offline_message(From ,To ,Packet,MID,MsgType,N) when N < 3 ->
 	%% 取自配置文件 ejabberd.cfg
 	HTTPService = ejabberd_config:get_local_option({http_server_service_client,Domain}),
 	HTTPTarget = string:concat(HTTPServer,HTTPService),
-	?INFO_MSG("push msg id ~p", [MID]),
 	Msg = get_text_message_from_packet( Packet ),
 	{Service,Method,FN,TN,MSG,MSG_ID,MType} = {
 				      list_to_binary("service.uri.pet_user"),
@@ -185,17 +184,14 @@ send_offline_message(From ,To ,Packet,MID,MsgType,3) ->
 	ok.
 
 user_send_packet_handler(#jid{server=FD}=From, To, Packet) ->
-	?WARNING_MSG("user ~p receive ack from ~p content ~p", [To, From, Packet]),
+	?INFO_MSG("user ~p send packet ~p content ~p", [To, From, Packet]),
 	try
-		?DEBUG("~n************** my_hookhandler user_send_packet_handler >>>>>>>>>>>>>>>~p~n ",[zhiming_debug]),
-		?DEBUG("~n~pFrom=~p ; To=~p ; Packet=~p~n ", [liangchuan_debug,From, To, Packet] ),
 		%% From={jid,"cc","test.com","Smack","cc","test.com","Smack"}
 		[_,E|_] = tuple_to_list(Packet),
 		Domain = FD,
 		case E of 
 			"message" ->
 				{_,"message",Attr,_} = Packet,
-				?DEBUG("Attr=~p", [Attr] ),
 				D = dict:from_list(Attr),
 				MT = case dict:is_key("msgtype",D) of true-> dict:fetch("msgtype",D); _-> "" end,
 				
@@ -211,12 +207,6 @@ user_send_packet_handler(#jid{server=FD}=From, To, Packet) ->
 					true -> 
 						send_message_to_user(From, To, Packet)
 				end;
-%% 				case aa_group_chat:is_group_chat(To) of  
-%% 					true when MT=/="msgStatus" ->
-%% 						aa_group_chat:route_group_msg(From, To, Packet);
-%% 					_ -> 
-%% 						send_message_to_user(From, To, Packet)
-%% 				end;
 			_ ->
 				?DEBUG("~p", [skip_00] ),
 				skip
@@ -257,7 +247,7 @@ send_message_to_user(#jid{user=FU, server = Domain}=From, #jid{user = ToUser}=To
 	end.
 
 user_receive_packet_handler(_JID, #jid{user = FU, server=FD}=From, To, Packet) ->
-	?WARNING_MSG("user ~p receive ack from ~p content ~p", [To, From, Packet]),
+	?INFO_MSG("user ~p receive ack from ~p content ~p", [To, From, Packet]),
 	[_,E|_] = tuple_to_list(Packet),
 	Domain = FD,
 	if FU == "messageack" ->
@@ -265,7 +255,6 @@ user_receive_packet_handler(_JID, #jid{user = FU, server=FD}=From, To, Packet) -
 	   true ->
 		   case E of 
 			   "message" ->
-				   ?INFO_MSG("user receive packet ~p", [{From, To, Packet}]),
 				   {_,"message",Attr,_} = Packet,
 				   D = dict:from_list(Attr),
 				   MT = case dict:is_key("msgtype",D) of true-> dict:fetch("msgtype",D); _-> "" end,
@@ -346,13 +335,7 @@ handle_cast({server_ack,#jid{server=FD},_To,Packet},State)->
 	D = dict:from_list(Attr),
 	MT = case dict:is_key("msgtype",D) of true-> dict:fetch("msgtype",D); _-> "" end,
 	SRC_ID_STR = case dict:is_key("id", D) of true -> dict:fetch("id", D); _ -> "" end,
-	ACK_FROM = case ejabberd_config:get_local_option({ack_from ,Domain}) of 
-			   true -> true;
-			   _ -> false
-	end,
-
-	if ACK_FROM and ( (MT=:="normalchat") or (MT=:="groupchat") ) ->
-		   %% IS_GROUP_CHAT = aa_group_chat:is_group_chat(To),
+	if ( (MT=:="normalchat") or (MT=:="groupchat") ) ->
 		   case dict:is_key("from", D) of 
 			   true -> 
 				   Attributes = [
@@ -366,7 +349,6 @@ handle_cast({server_ack,#jid{server=FD},_To,Packet},State)->
 				   Child = [{xmlelement, "body", [], [
 						{xmlcdata, list_to_binary("{'src_id':'"++SRC_ID_STR++"','received':'true'}")}
 				   ]}],
-				   %%Answer = {xmlelement,"message",Attributes, []},
 				   Answer = {xmlelement, "message", Attributes , Child},
 				   FF = jlib:string_to_jid(xml:get_tag_attr_s("from", Answer)),
 				   TT = jlib:string_to_jid(xml:get_tag_attr_s("to", Answer)),
@@ -375,7 +357,7 @@ handle_cast({server_ack,#jid{server=FD},_To,Packet},State)->
 					   ok -> 
 						   ?DEBUG("Answer ::::> ~p ", [ok] );
 					   _ERROR ->
-						   ?DEBUG("Answer ::::> error=~p ", [_ERROR] )
+						   ?ERROR_MSG("Answer ::::> error=~p ", [_ERROR] )
 				   end,
 				   answer;
 			   _ ->

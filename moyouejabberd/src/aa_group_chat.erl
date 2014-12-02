@@ -260,14 +260,12 @@ route_msg(#jid{user=FromUser}=From,#jid{user=User,server=Domain}=To,Packet,Group
 			RAttr1 = lists:append(RAttr0,[{"groupid",GroupId}]),
 			RAttr2 = lists:append(RAttr1,[{"g","0"}]),
 			RPacket = {X,E,RAttr2,Body},
-			?DEBUG("###### route_group_msg 003 input :::> {From,To,RPacket}=~p",[{From,To,RPacket}]),
+			aa_hookhandler:send_message_to_user(From, To, RPacket),
 			case ejabberd_router:route(From, To, RPacket) of
 				ok ->
-					?DEBUG("###### route_group_msg 003 OK :::> {From,To,RPacket}=~p",[{From,To,RPacket}]),
-					aa_hookhandler:send_message_to_user(From, To, RPacket),
 					{ok,ok};
 				Err ->
-					?DEBUG("###### route_group_msg 003 ERR=~p :::> {From,To,RPacket}=~p",[Err,{From,To,RPacket}]),
+					?ERROR_MSG("###### route_group_msg 003 ERR=~p :::> {From,To,RPacket}=~p",[Err,{From,To,RPacket}]),
 					{error,Err}
 			end;
 		_ ->
