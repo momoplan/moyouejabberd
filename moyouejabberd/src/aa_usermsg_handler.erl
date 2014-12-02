@@ -192,7 +192,7 @@ get_user_tables(UserJid) ->
 	case mnesia:read(?MY_USER_TABLES, UserJid, write) of
 		[TableInfo] ->
 			TableInfo;
-		_ ->
+		[] ->
 			NodeNameList = atom_to_list(node()),
 			RamMsgTableName = list_to_atom(NodeNameList ++ "user_message"),			
 			RamMsgListTableName = list_to_atom(NodeNameList ++ "user_msglist"),
@@ -200,7 +200,7 @@ get_user_tables(UserJid) ->
 										 msg_table = RamMsgTableName, 
 										 msg_list_table = RamMsgListTableName},
 			mnesia:dirty_write(?MY_USER_TABLES, TableInfo),
-			TableInfo
+			TableInfo		
 	end.
 
 unixtime() ->
