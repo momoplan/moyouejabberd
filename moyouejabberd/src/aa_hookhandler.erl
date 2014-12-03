@@ -183,12 +183,11 @@ send_offline_message(From ,To ,Packet,MID,MsgType,3) ->
 	?ERROR_MSG("[ERROR] offline_message_hook_handler_lost ~p",[{From ,To ,Packet,MID,MsgType,3}]),
 	ok.
 
-user_send_packet_handler(#jid{server=FD}=From, To, Packet) ->
+user_send_packet_handler(#jid{server=Domain}=From, To, Packet) ->
 	?INFO_MSG("user ~p send packet ~p content ~p", [To, From, Packet]),
 	try
 		%% From={jid,"cc","test.com","Smack","cc","test.com","Smack"}
 		[_,E|_] = tuple_to_list(Packet),
-		Domain = FD,
 		case E of 
 			"message" ->
 				{_,"message",Attr,_} = Packet,
@@ -196,7 +195,7 @@ user_send_packet_handler(#jid{server=FD}=From, To, Packet) ->
 				MT = case dict:is_key("msgtype",D) of true-> dict:fetch("msgtype",D); _-> "" end,
 				
 				server_ack(From,To,Packet),
-				if MT == "groupchat" ->
+				if MT == "groupchat" andalso "gamepro.com" == Domain ->
 					   GroupId = case dict:is_key("groupid", D) of
 									 true ->
 										 dict:fetch("groupid", D);

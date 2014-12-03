@@ -139,25 +139,17 @@ get_offline_msg(UserJid1) ->
 			?ERROR_MSG("get offline for user ~p, Reason:~p", [UserJid1, Reason]),
 			{ok, []};
 		{atomic, {TableName, RamMsgListTableName}} ->
+			aa_usermsg_handler:load(UserJid),
 			case mnesia:dirty_read(RamMsgListTableName, UserJid) of
 				[] ->
-					%% 内存里没有任何列表的数据，这时候可以认为需要到数据库里查找一下数据
-					?WARNING_MSG("get user offline msg loop 1", []),
-					aa_usermsg_handler:load(UserJid),
-					aa_usermsg_handler:get_offline_msg(UserJid);
+					{ok, []};
 				[#user_msg_list{msg_list = []}] ->
 					{ok, []};
-				[#user_msg_list{msg_list = KeysList} = UM] ->
-					case lists:reverse(KeysList) of
-						[-1|_] ->%% 有一部分数据被写入数据库了	
-							aa_usermsg_handler:load(UserJid),
-							aa_usermsg_handler:get_offline_msg(UserJid);
-						_ ->
-							MsgsIds = recheck_message_ids(TableName, RamMsgListTableName, UM),
-							%% 保证有消息，保证是倒序的
-							Msgs = load_mnesia_messages(MsgsIds, TableName),						
-							{ok, Msgs}
-					end;
+				[UM] ->
+					MsgsIds = recheck_message_ids(TableName, RamMsgListTableName, UM),
+					%% 保证有消息，保证是倒序的
+					Msgs = load_mnesia_messages(MsgsIds, TableName),						
+					{ok, Msgs};
 				_ ->
 					{ok, []}
 			end
@@ -251,14 +243,7 @@ store_message(Key, From, To, Packet) ->
 						OldList = UserMsgList#user_msg_list.msg_list,
 						NewListData = UserMsgList#user_msg_list{msg_list = [Key|OldList]};
 					_ ->
-						%% 内存里没有消息列表
-						Status = aa_session:check_online(To),
-						case Status of
-							online -> %% 如果用户在线，则不需要到数据里拉取消息
-								NewListData = #user_msg_list{id = To, msg_list = [Key]};
-							offline ->%% 如果用户不在线，则认为很有可能数据被全部写入数据库，做个标记
-								NewListData = #user_msg_list{id = To, msg_list = [Key, -1]}
-						end
+						NewListData = #user_msg_list{id = To, msg_list = [Key]}
 				end,
 				mnesia:dirty_write(ListTableName, NewListData)
 		end,
@@ -283,7 +268,6 @@ store_message(Key, From, To, Packet) ->
 %% 	mnesia:dirty_write(TableName, Data).
 
 delete_message(Key, UserJid) ->	
-	?WARNING_MSG("delete message start", []),
 	F = fun() ->
 				case mnesia:read(?MY_USER_TABLES, UserJid,write) of
 					[TableInfo] ->
@@ -303,8 +287,7 @@ delete_message(Key, UserJid) ->
 						end;
 					_ ->
 						skip
-				end,
-				?WARNING_MSG("delete message finish", [])
+				end
 		end,	
 	case mnesia:transaction(F) of
 		{atomic, Result} ->
@@ -342,7 +325,7 @@ load_msg_to_mnesia(MsgTableName, Jid) ->
 deal_mysql_datas(DataList, MsgTableName) ->
 	F = fun(Data, KList) ->
 				Msg = format_msg(Data),
-				mnesia:write(MsgTableName, Msg, write),
+				mnesia:dirty_write(MsgTableName, Msg),
 				[Msg#user_msg.id|KList]
 		end,
 	lists:foldl(F, [], DataList).
@@ -378,7 +361,7 @@ rebuild_user_msglist(Jid, ListTableName, LoadKeyList) ->
 			NewData = #user_msg_list{id = Jid, msg_list = LoadKeyList}
 	end,
 	?WARNING_MSG("new list data ~p", [NewData]),
-	mnesia:dirty_write(ListTableName, NewData, write).
+	mnesia:dirty_write(ListTableName, NewData).
 
 write_messages_to_sql(_Jid, [], _Tablename)->
 	ok;
