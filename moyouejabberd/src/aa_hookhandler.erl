@@ -9,7 +9,7 @@
 -define(HTTP_HEAD,"application/x-www-form-urlencoded").
 -define(TIME_OUT,1000*5).
 
--define(PUSH_PID_NUM, 20).
+-define(PUSH_PID_NUM, 64).
 
 -define(DBCONNNUM, 100).
 
