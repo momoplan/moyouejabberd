@@ -365,7 +365,7 @@ clear_user_mysql_data(Jid) ->
 	db_sql:execute(Sql1).
 
 rebuild_user_msglist(Jid, ListTableName, LoadKeyList) ->
-	case mnesia:read(ListTableName, Jid) of
+	case mnesia:dirty_read(ListTableName, Jid) of
 		[#user_msg_list{msg_list = MList} = Data] ->
 			case lists:reverse(MList) of
 				[-1|Rest] ->
@@ -378,7 +378,7 @@ rebuild_user_msglist(Jid, ListTableName, LoadKeyList) ->
 			NewData = #user_msg_list{id = Jid, msg_list = LoadKeyList}
 	end,
 	?WARNING_MSG("new list data ~p", [NewData]),
-	mnesia:write(ListTableName, NewData, write).
+	mnesia:dirty_write(ListTableName, NewData, write).
 
 write_messages_to_sql(_Jid, [], _Tablename)->
 	ok;
