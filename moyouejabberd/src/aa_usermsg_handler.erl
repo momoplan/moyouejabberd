@@ -165,7 +165,7 @@ recheck_message_ids(TableName, RamMsgListTableName, #user_msg_list{msg_list = Ke
 							   end 
 					   end, KeysList),
 	F = fun() ->
-				mnesia:write({RamMsgListTableName, OldListData#user_msg_list{msg_list = AvaliableList}, write})
+				mnesia:write(RamMsgListTableName, OldListData#user_msg_list{msg_list = AvaliableList}, write)
 		end,
 	mnesia:transaction(F),
 	AvaliableList.
