@@ -64,19 +64,33 @@ dump(Jid) ->
 	?ERROR_MSG("dump cost time ~p", [T2 - T1]).
 
 load(Jid) ->
+	UserJid = format_user_data(Jid),
 	F = fun() ->
-				UserJid = format_user_data(Jid),
-				#?MY_USER_TABLES{msg_table = TableName, msg_list_table = RamMsgListTableName} =
+				#?MY_USER_TABLES{msg_table = T1, msg_list_table = T2} =
 					 get_user_tables(UserJid),
-				load_message_from_mysql(UserJid, TableName, RamMsgListTableName)
+				{T1, T2}
 		end,
-%% 	mnesia:transaction(F),
 	case mnesia:transaction(F) of
-		{atomic, Result} ->
-			?INFO_MSG("load user mssage correctly: ~p", [Result]);
 		{aborted, Reason} ->
-			?ERROR_MSG("Problem loading message form db, player:~p Reason:~p", [Jid, Reason])
+			?ERROR_MSG("get offline for user ~p, Reason:~p", [UserJid, Reason]),
+			{ok, []};
+		{atomic, {TableName, RamMsgListTableName}} ->
+			load_message_from_mysql(UserJid, TableName, RamMsgListTableName)
 	end.
+
+%% 	F = fun() ->
+%% 				UserJid = format_user_data(Jid),
+%% 				#?MY_USER_TABLES{msg_table = TableName, msg_list_table = RamMsgListTableName} =
+%% 					 get_user_tables(UserJid),
+%% 				load_message_from_mysql(UserJid, TableName, RamMsgListTableName)
+%% 		end,
+%% %% 	mnesia:transaction(F),
+%% 	case mnesia:transaction(F) of
+%% 		{atomic, Result} ->
+%% 			?INFO_MSG("load user mssage correctly: ~p", [Result]);
+%% 		{aborted, Reason} ->
+%% 			?ERROR_MSG("Problem loading message form db, player:~p Reason:~p", [Jid, Reason])
+%% 	end.
 
 start_link(_Jid) ->
 	ok.
@@ -129,31 +143,59 @@ del_msg(Key, UserJid1) ->
 
 get_offline_msg(UserJid1) ->
 	UserJid = format_user_data(UserJid1),
-	F = fun() ->
-				#?MY_USER_TABLES{msg_table = T1, msg_list_table = T2} =
-					 get_user_tables(UserJid),
-				{T1, T2}
-		end,
-	case mnesia:transaction(F) of
-		{aborted, Reason} ->
-			?ERROR_MSG("get offline for user ~p, Reason:~p", [UserJid1, Reason]),
+	case mnesia:dirty_read(?MY_USER_TABLES, UserJid) of
+		[ #?MY_USER_TABLES{msg_table = TableName, msg_list_table = ListTableName}] ->
+			skip;
+		[] ->
+			NodeNameList = atom_to_list(node()),
+			TableName = list_to_atom(NodeNameList ++ "user_message"),			
+			ListTableName = list_to_atom(NodeNameList ++ "user_msglist"),
+			TableInfo = #?MY_USER_TABLES{id = UserJid,
+										 msg_table = TableName, 
+										 msg_list_table = ListTableName},
+			mnesia:dirty_write(?MY_USER_TABLES, TableInfo)
+	end,
+	aa_usermsg_handler:load(UserJid),
+	case mnesia:dirty_read(ListTableName, UserJid) of
+		[] ->
 			{ok, []};
-		{atomic, {TableName, RamMsgListTableName}} ->
-			aa_usermsg_handler:load(UserJid),
-			case mnesia:dirty_read(RamMsgListTableName, UserJid) of
-				[] ->
-					{ok, []};
-				[#user_msg_list{msg_list = []}] ->
-					{ok, []};
-				[UM] ->
-					MsgsIds = recheck_message_ids(TableName, RamMsgListTableName, UM),
-					%% 保证有消息，保证是倒序的
-					Msgs = load_mnesia_messages(MsgsIds, TableName),						
-					{ok, Msgs};
-				_ ->
-					{ok, []}
-			end
+		[#user_msg_list{msg_list = []}] ->
+			{ok, []};
+		[UM] ->
+			MsgsIds = recheck_message_ids(TableName, ListTableName, UM),
+			%% 保证有消息，保证是倒序的
+			Msgs = load_mnesia_messages(MsgsIds, TableName),						
+			{ok, Msgs};
+		_ ->
+			{ok, []}
 	end.
+%% 	UserJid = format_user_data(UserJid1),
+%% 	F = fun() ->
+%% 				#?MY_USER_TABLES{msg_table = T1, msg_list_table = T2} =
+%% 					 get_user_tables(UserJid),
+%% 				{T1, T2}
+%% 		end,
+%% 	
+%% 	case mnesia:transaction(F) of
+%% 		{aborted, Reason} ->
+%% 			?ERROR_MSG("get offline for user ~p, Reason:~p", [UserJid1, Reason]),
+%% 			{ok, []};
+%% 		{atomic, {TableName, RamMsgListTableName}} ->
+%% 			aa_usermsg_handler:load(UserJid),
+%% 			case mnesia:dirty_read(RamMsgListTableName, UserJid) of
+%% 				[] ->
+%% 					{ok, []};
+%% 				[#user_msg_list{msg_list = []}] ->
+%% 					{ok, []};
+%% 				[UM] ->
+%% 					MsgsIds = recheck_message_ids(TableName, RamMsgListTableName, UM),
+%% 					%% 保证有消息，保证是倒序的
+%% 					Msgs = load_mnesia_messages(MsgsIds, TableName),						
+%% 					{ok, Msgs};
+%% 				_ ->
+%% 					{ok, []}
+%% 			end
+%% 	end.
 
 recheck_message_ids(TableName, RamMsgListTableName, #user_msg_list{msg_list = KeysList} = OldListData) ->
 	AvaliableList = lists:filter(fun(Key) ->
@@ -224,35 +266,56 @@ store_message(Key, From, To, Packet) ->
 					 timestamp = Now, 
 					 expire_time = ExpireTime,
 					 score = index_score()},
-	F = fun() ->
-				case mnesia:read(?MY_USER_TABLES, To,write) of
-					[ #?MY_USER_TABLES{msg_table = TableName, msg_list_table = ListTableName}] ->
-						skip;
-					[] ->
-						NodeNameList = atom_to_list(node()),
-						TableName = list_to_atom(NodeNameList ++ "user_message"),			
-						ListTableName = list_to_atom(NodeNameList ++ "user_msglist"),
-						TableInfo = #?MY_USER_TABLES{id = To,
-													 msg_table = TableName, 
-													 msg_list_table = ListTableName},
-						mnesia:dirty_write(?MY_USER_TABLES, TableInfo)
-				end,
-				mnesia:dirty_write(TableName, Data),
-				case mnesia:dirty_read(ListTableName, To) of
-					[UserMsgList] ->
-						OldList = UserMsgList#user_msg_list.msg_list,
-						NewListData = UserMsgList#user_msg_list{msg_list = [Key|OldList]};
-					_ ->
-						NewListData = #user_msg_list{id = To, msg_list = [Key]}
-				end,
-				mnesia:dirty_write(ListTableName, NewListData)
-		end,
-	case mnesia:transaction(F) of
-		{atomic, Result} ->
-			?INFO_MSG("packet save correctly: ~p", [Result]);
-		{aborted, Reason} ->
-			?ERROR_MSG("Problem saving packet:~n~p  reason:~p", [Packet,Reason])
-	end.
+	case mnesia:dirty_read(?MY_USER_TABLES, To) of
+		[ #?MY_USER_TABLES{msg_table = TableName, msg_list_table = ListTableName}] ->
+			skip;
+		[] ->
+			NodeNameList = atom_to_list(node()),
+			TableName = list_to_atom(NodeNameList ++ "user_message"),			
+			ListTableName = list_to_atom(NodeNameList ++ "user_msglist"),
+			TableInfo = #?MY_USER_TABLES{id = To,
+										 msg_table = TableName, 
+										 msg_list_table = ListTableName},
+			mnesia:dirty_write(?MY_USER_TABLES, TableInfo)
+	end,
+	mnesia:dirty_write(TableName, Data),
+	case mnesia:dirty_read(ListTableName, To) of
+		[UserMsgList] ->
+			OldList = UserMsgList#user_msg_list.msg_list,
+			NewListData = UserMsgList#user_msg_list{msg_list = [Key|OldList]};
+		_ ->
+			NewListData = #user_msg_list{id = To, msg_list = [Key]}
+	end,
+	mnesia:dirty_write(ListTableName, NewListData).
+%% 	F = fun() ->
+%% 				case mnesia:read(?MY_USER_TABLES, To,write) of
+%% 					[ #?MY_USER_TABLES{msg_table = TableName, msg_list_table = ListTableName}] ->
+%% 						skip;
+%% 					[] ->
+%% 						NodeNameList = atom_to_list(node()),
+%% 						TableName = list_to_atom(NodeNameList ++ "user_message"),			
+%% 						ListTableName = list_to_atom(NodeNameList ++ "user_msglist"),
+%% 						TableInfo = #?MY_USER_TABLES{id = To,
+%% 													 msg_table = TableName, 
+%% 													 msg_list_table = ListTableName},
+%% 						mnesia:dirty_write(?MY_USER_TABLES, TableInfo)
+%% 				end,
+%% 				mnesia:dirty_write(TableName, Data),
+%% 				case mnesia:dirty_read(ListTableName, To) of
+%% 					[UserMsgList] ->
+%% 						OldList = UserMsgList#user_msg_list.msg_list,
+%% 						NewListData = UserMsgList#user_msg_list{msg_list = [Key|OldList]};
+%% 					_ ->
+%% 						NewListData = #user_msg_list{id = To, msg_list = [Key]}
+%% 				end,
+%% 				mnesia:dirty_write(ListTableName, NewListData)
+%% 		end,
+%% 	case mnesia:transaction(F) of
+%% 		{atomic, Result} ->
+%% 			?INFO_MSG("packet save correctly: ~p", [Result]);
+%% 		{aborted, Reason} ->
+%% 			?ERROR_MSG("Problem saving packet:~n~p  reason:~p", [Packet,Reason])
+%% 	end.
 
 	
 
@@ -268,33 +331,52 @@ store_message(Key, From, To, Packet) ->
 %% 	mnesia:dirty_write(TableName, Data).
 
 delete_message(Key, UserJid) ->	
-	F = fun() ->
-				case mnesia:read(?MY_USER_TABLES, UserJid,write) of
-					[TableInfo] ->
-						#?MY_USER_TABLES{msg_table = TableName, msg_list_table = ListTableName} =TableInfo,
-						mnesia:dirty_delete(TableName, Key),
-						case mnesia:dirty_read(ListTableName, UserJid) of
-							[#user_msg_list{msg_list = KeyList}] ->
-								case KeyList of
-									[Key|Rest] ->
-										NewListData = #user_msg_list{id = UserJid, msg_list = Rest};
-									_ ->
-										NewListData = #user_msg_list{id = UserJid, msg_list = lists:delete(Key, KeyList)}
-								end,
-								mnesia:dirty_write(ListTableName, NewListData);
-							_ ->
-								skip
-						end;
-					_ ->
-						skip
-				end
-		end,	
-	case mnesia:transaction(F) of
-		{atomic, Result} ->
-		    ?INFO_MSG("packet delete correctly: ~p", [Result]);
-		{aborted, Reason} ->
-		    ?ERROR_MSG("Problem deleting message key ~p for user ~p  reason:~p", [Key, UserJid,Reason])
-	    end.
+	case mnesia:dirty_read(?MY_USER_TABLES, UserJid) of
+		[TableInfo] ->
+			#?MY_USER_TABLES{msg_table = TableName, msg_list_table = ListTableName} =TableInfo,
+			mnesia:dirty_delete(TableName, Key),
+			case mnesia:dirty_read(ListTableName, UserJid) of
+				[#user_msg_list{msg_list = KeyList}] ->
+					case KeyList of
+						[Key|Rest] ->
+							NewListData = #user_msg_list{id = UserJid, msg_list = Rest};
+						_ ->
+							NewListData = #user_msg_list{id = UserJid, msg_list = lists:delete(Key, KeyList)}
+					end,
+					mnesia:dirty_write(ListTableName, NewListData);
+				_ ->
+					skip
+			end;
+		_ ->
+			skip
+	end.
+%% 	F = fun() ->
+%% 				case mnesia:read(?MY_USER_TABLES, UserJid,write) of
+%% 					[TableInfo] ->
+%% 						#?MY_USER_TABLES{msg_table = TableName, msg_list_table = ListTableName} =TableInfo,
+%% 						mnesia:dirty_delete(TableName, Key),
+%% 						case mnesia:dirty_read(ListTableName, UserJid) of
+%% 							[#user_msg_list{msg_list = KeyList}] ->
+%% 								case KeyList of
+%% 									[Key|Rest] ->
+%% 										NewListData = #user_msg_list{id = UserJid, msg_list = Rest};
+%% 									_ ->
+%% 										NewListData = #user_msg_list{id = UserJid, msg_list = lists:delete(Key, KeyList)}
+%% 								end,
+%% 								mnesia:dirty_write(ListTableName, NewListData);
+%% 							_ ->
+%% 								skip
+%% 						end;
+%% 					_ ->
+%% 						skip
+%% 				end
+%% 		end,	
+%% 	case mnesia:transaction(F) of
+%% 		{atomic, Result} ->
+%% 		    ?INFO_MSG("packet delete correctly: ~p", [Result]);
+%% 		{aborted, Reason} ->
+%% 		    ?ERROR_MSG("Problem deleting message key ~p for user ~p  reason:~p", [Key, UserJid,Reason])
+%% 	    end.
 
 format_user_data(Jid) ->
 	Jid#jid{resource = [], lresource = []}.
