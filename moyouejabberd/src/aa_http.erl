@@ -47,83 +47,89 @@ handle_http(Req) ->
 	try
 		Method = Req:get(method),
 		Args = case Method of
-			'GET' ->
-				Req:parse_qs();
-			'POST' ->
-				Req:parse_post()
-		end,
-		[{"body",Body}] = Args,
-		?DEBUG("###### handle_http :::> Body=~p",[Body]),
-		{ok,Obj,_Re} = rfc4627:decode(Body),
-		%%{ok,T} = rfc4627:get_field(Obj, "token"),
-		{ok,M} = rfc4627:get_field(Obj, "method"),
-
-		case binary_to_list(M) of 
-			"message_count" ->
-				GoodNodes = lists:filter(fun(Node) ->
-												  P = rpc:call(Node,erlang,whereis,[aa_msg_statistic]),
-												  is_pid(P)
-										  end, [node()|nodes()]),
-				Datas =	[begin 
-							 {ok, Info} = rpc:call(Node,aa_msg_statistic,info,[]),
-							 {Node, Info}
-						 end || Node <- GoodNodes],
-				{ok, {Total, TotalDel, TotalToday, TotalTodayDel}} = aa_msg_statistic:info(),
-				Json = lists:map(fun({Node, {Total, TotalDel, TotalToday, TotalTodayDel}}) ->
-										 {obj, [{node, Node},
-												{total, Total}, 
-												{total_delete, TotalDel},
-												{today_total, TotalToday},
-												{today_total_delete, TotalTodayDel}]}
-								 end, Datas),
-				http_response({#success{success=true,entity=Json},Req});
-			"process_counter" ->
-				Counter = aa_process_counter:process_counter(),
-				http_response({#success{success=true,entity=Counter},Req});
-			"get_user_list" ->
-				UserList = aa_session:get_user_list(Body),	
-				http_response({#success{success=true,entity=UserList},Req});
-			"remove_group" ->
-				Params = get_group_info(Body),
-				?DEBUG("remove_group params=~p",[Params]),
-				{ok,Gid1} = rfc4627:get_field(Params,"gid"),
-				Gid = binary_to_list(Gid1),
-				Result = aa_group_chat:remove_group(Gid),	
-				http_response({#success{success=true,entity=Result},Req});
-			"remove_user" ->
-				Params = get_group_info(Body),
-				{ok,Gid1} = rfc4627:get_field(Params,"gid"),
-				{ok,Uid1} = rfc4627:get_field(Params,"uid"),
-				Gid = binary_to_list(Gid1),
-				Uid = binary_to_list(Uid1),
-				Result = aa_group_chat:remove_user(Gid,Uid),	
-				http_response({#success{success=true,entity=Result},Req});
-			"append_user" ->
-				Params = get_group_info(Body),
-				{ok,Gid1} = rfc4627:get_field(Params,"gid"),
-				{ok,Uid1} = rfc4627:get_field(Params,"uid"),
-				Gid = binary_to_list(Gid1),
-				Uid = binary_to_list(Uid1),
-				Result = aa_group_chat:append_user(Gid,Uid),	
-				http_response({#success{success=true,entity=Result},Req});
-			"ack" ->
-				case rfc4627:get_field(Obj, "service") of
-					{ok,<<"emsg_bridge">>} ->
-						Result = aa_bridge:ack(Body),
-						http_response({#success{success=true,entity=Result},Req});
-					_ ->
-						http_response({#success{success=false,entity=list_to_binary("method undifine")},Req})
-				end;
-			"route" ->
-				case rfc4627:get_field(Obj, "service") of
-					{ok,<<"emsg_bridge">>} ->
-						Result = aa_bridge:route(Body),
-						http_response({#success{success=true,entity=Result},Req});
-					_ ->
-						http_response({#success{success=false,entity=list_to_binary("method undifine")},Req})
-				end;
-			_ ->
-				http_response({#success{success=false,entity=list_to_binary("method undifine")},Req})
+				   'GET' ->
+					   Req:parse_qs();
+				   'POST' ->
+					   Req:parse_post();
+				   'HEAD' ->
+					   []
+			   end,
+		if Args == [] ->
+			   skip;
+		   true ->			   
+			   [{"body",Body}] = Args,
+			   ?DEBUG("###### handle_http :::> Body=~p",[Body]),
+			   {ok,Obj,_Re} = rfc4627:decode(Body),
+			   %%{ok,T} = rfc4627:get_field(Obj, "token"),
+			   {ok,M} = rfc4627:get_field(Obj, "method"),
+			   
+			   case binary_to_list(M) of 
+				   "message_count" ->
+					   GoodNodes = lists:filter(fun(Node) ->
+														P = rpc:call(Node,erlang,whereis,[aa_msg_statistic]),
+														is_pid(P)
+												end, [node()|nodes()]),
+					   Datas =	[begin 
+									 {ok, Info} = rpc:call(Node,aa_msg_statistic,info,[]),
+									 {Node, Info}
+								 end || Node <- GoodNodes],
+					   {ok, {Total, TotalDel, TotalToday, TotalTodayDel}} = aa_msg_statistic:info(),
+					   Json = lists:map(fun({Node, {Total, TotalDel, TotalToday, TotalTodayDel}}) ->
+												{obj, [{node, Node},
+													   {total, Total}, 
+													   {total_delete, TotalDel},
+													   {today_total, TotalToday},
+													   {today_total_delete, TotalTodayDel}]}
+										end, Datas),
+					   http_response({#success{success=true,entity=Json},Req});
+				   "process_counter" ->
+					   Counter = aa_process_counter:process_counter(),
+					   http_response({#success{success=true,entity=Counter},Req});
+				   "get_user_list" ->
+					   UserList = aa_session:get_user_list(Body),	
+					   http_response({#success{success=true,entity=UserList},Req});
+				   "remove_group" ->
+					   Params = get_group_info(Body),
+					   ?DEBUG("remove_group params=~p",[Params]),
+					   {ok,Gid1} = rfc4627:get_field(Params,"gid"),
+					   Gid = binary_to_list(Gid1),
+					   Result = aa_group_chat:remove_group(Gid),	
+					   http_response({#success{success=true,entity=Result},Req});
+				   "remove_user" ->
+					   Params = get_group_info(Body),
+					   {ok,Gid1} = rfc4627:get_field(Params,"gid"),
+					   {ok,Uid1} = rfc4627:get_field(Params,"uid"),
+					   Gid = binary_to_list(Gid1),
+					   Uid = binary_to_list(Uid1),
+					   Result = aa_group_chat:remove_user(Gid,Uid),	
+					   http_response({#success{success=true,entity=Result},Req});
+				   "append_user" ->
+					   Params = get_group_info(Body),
+					   {ok,Gid1} = rfc4627:get_field(Params,"gid"),
+					   {ok,Uid1} = rfc4627:get_field(Params,"uid"),
+					   Gid = binary_to_list(Gid1),
+					   Uid = binary_to_list(Uid1),
+					   Result = aa_group_chat:append_user(Gid,Uid),	
+					   http_response({#success{success=true,entity=Result},Req});
+				   "ack" ->
+					   case rfc4627:get_field(Obj, "service") of
+						   {ok,<<"emsg_bridge">>} ->
+							   Result = aa_bridge:ack(Body),
+							   http_response({#success{success=true,entity=Result},Req});
+						   _ ->
+							   http_response({#success{success=false,entity=list_to_binary("method undifine")},Req})
+					   end;
+				   "route" ->
+					   case rfc4627:get_field(Obj, "service") of
+						   {ok,<<"emsg_bridge">>} ->
+							   Result = aa_bridge:route(Body),
+							   http_response({#success{success=true,entity=Result},Req});
+						   _ ->
+							   http_response({#success{success=false,entity=list_to_binary("method undifine")},Req})
+					   end;
+				   _ ->
+					   http_response({#success{success=false,entity=list_to_binary("method undifine")},Req})
+			   end
 		end
 	catch
 		C:Reason -> 

@@ -246,7 +246,6 @@ send_message_to_user(#jid{user=FU, server = Domain}=From, #jid{user = ToUser}=To
 	end.
 
 user_receive_packet_handler(_JID, #jid{user = FU, server=FD}=From, To, Packet) ->
-	?INFO_MSG("user ~p receive ack from ~p content ~p", [To, From, Packet]),
 	[_,E|_] = tuple_to_list(Packet),
 	Domain = FD,
 	if FU == "messageack" ->
@@ -254,6 +253,7 @@ user_receive_packet_handler(_JID, #jid{user = FU, server=FD}=From, To, Packet) -
 	   true ->
 		   case E of 
 			   "message" ->
+				   ?INFO_MSG("user ~p receive message from ~p content ~p", [To, From, Packet]),
 				   {_,"message",Attr,_} = Packet,
 				   D = dict:from_list(Attr),
 				   MT = case dict:is_key("msgtype",D) of true-> dict:fetch("msgtype",D); _-> "" end,
@@ -422,13 +422,13 @@ ack_task({ack,ID})->
 	end.
 
 ack_task(ID,#jid{user = User} = From,To,Packet)->
-	?INFO_MSG("user ~p ACK_TASK_~p ::::> START ~p.",[User, ID, self()]),
+	?DEBUG("user ~p ACK_TASK_~p ::::> START ~p.",[User, ID, self()]),
 	receive 
 		ack ->
-			?INFO_MSG("ACK_TASK_ ~p ::::> ACK ~p.",[self(), ID]),
+			?DEBUG("ACK_TASK_ ~p ::::> ACK ~p.",[self(), ID]),
 			ets:delete(?ETS_ACK_TASK, ID)
 	after ?TIME_OUT -> 
-		?INFO_MSG("ack ~p trigger offline msg push ~p", [self(),ID]),
+		?DEBUG("ack ~p trigger offline msg push ~p", [self(),ID]),
 		ets:delete(?ETS_ACK_TASK, ID),
 		gen_server:cast(?MODULE, {deal_offline_msg, From, To, Packet})
 	end.

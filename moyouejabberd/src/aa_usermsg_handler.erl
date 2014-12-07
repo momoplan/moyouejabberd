@@ -143,26 +143,17 @@ del_msg(Key, UserJid1) ->
 
 get_offline_msg(UserJid1) ->
 	UserJid = format_user_data(UserJid1),
-	case mnesia:dirty_read(?MY_USER_TABLES, UserJid) of
-		[ #?MY_USER_TABLES{msg_table = TableName, msg_list_table = ListTableName}] ->
-			skip;
-		[] ->
-			NodeNameList = atom_to_list(node()),
-			TableName = list_to_atom(NodeNameList ++ "user_message"),			
-			ListTableName = list_to_atom(NodeNameList ++ "user_msglist"),
-			TableInfo = #?MY_USER_TABLES{id = UserJid,
-										 msg_table = TableName, 
-										 msg_list_table = ListTableName},
-			mnesia:dirty_write(?MY_USER_TABLES, TableInfo)
-	end,
 	aa_usermsg_handler:load(UserJid),
+	
+	[ #?MY_USER_TABLES{msg_table = TableName, msg_list_table = ListTableName}] 
+		= mnesia:dirty_read(?MY_USER_TABLES, UserJid),
+	
 	case mnesia:dirty_read(ListTableName, UserJid) of
 		[] ->
 			{ok, []};
 		[#user_msg_list{msg_list = []}] ->
 			{ok, []};
-		[UM] ->
-			MsgsIds = recheck_message_ids(TableName, ListTableName, UM),
+		[#user_msg_list{msg_list = MsgsIds}] ->
 			%% 保证有消息，保证是倒序的
 			Msgs = load_mnesia_messages(MsgsIds, TableName),						
 			{ok, Msgs};
@@ -196,21 +187,6 @@ get_offline_msg(UserJid1) ->
 %% 					{ok, []}
 %% 			end
 %% 	end.
-
-recheck_message_ids(TableName, RamMsgListTableName, #user_msg_list{msg_list = KeysList} = OldListData) ->
-	AvaliableList = lists:filter(fun(Key) ->
-							   case mnesia:dirty_read(TableName, Key) of
-								   [_] ->
-									   true;
-								   _ ->
-									   false
-							   end 
-					   end, KeysList),
-	F = fun() ->
-				mnesia:write(RamMsgListTableName, OldListData#user_msg_list{msg_list = AvaliableList}, write)
-		end,
-	mnesia:transaction(F),
-	AvaliableList.
 
 load_mnesia_messages(MsgsIds, TableName) ->
 	lists:foldl(fun(Key, MList) ->
@@ -388,19 +364,18 @@ get_userpid_name(#jid{user = Uid, server = Domain}) ->
 %% 直接传表进来是因为外层直接做了锁，内层不需要关心锁的事情
 load_message_from_mysql(Jid, MsgTableName, ListTableName) ->
 	LoadKeyList = load_msg_to_mnesia(MsgTableName, Jid),
-	rebuild_user_msglist(Jid, ListTableName,LoadKeyList),
+	rebuild_user_msglist(Jid, ListTableName, LoadKeyList),
 	clear_user_mysql_data(Jid),
 	ok.
 
 load_msg_to_mnesia(MsgTableName, Jid) ->
 	Name = get_userpid_name(Jid),
-	Sql = io_lib:format("select * from messages where jid='~s' order by id",[Name]),
+	Sql = io_lib:format("select * from messages where jid='~s' order by id desc",[Name]),
 	case db_sql:get_all(Sql) of
 		[] ->
 			LoadKeyList = [];
 		DataList when is_list(DataList) ->
-			KList1 = deal_mysql_datas(DataList, MsgTableName),
-			LoadKeyList = lists:reverse(KList1)
+			LoadKeyList = deal_mysql_datas(DataList, MsgTableName)
 	end,
 	LoadKeyList.
 
@@ -431,18 +406,12 @@ clear_user_mysql_data(Jid) ->
 
 rebuild_user_msglist(Jid, ListTableName, LoadKeyList) ->
 	case mnesia:dirty_read(ListTableName, Jid) of
-		[#user_msg_list{msg_list = MList} = Data] ->
-			case lists:reverse(MList) of
-				[-1|Rest] ->
-					MList1 = lists:reverse(Rest);
-				_ ->
-					MList1 = MList
-			end,
-			NewData = Data#user_msg_list{msg_list = MList1 ++ LoadKeyList};
+		[#user_msg_list{msg_list = MList} = Data] ->			
+			NewData = Data#user_msg_list{msg_list = MList ++ LoadKeyList};
 		_ ->
 			NewData = #user_msg_list{id = Jid, msg_list = LoadKeyList}
 	end,
-	?WARNING_MSG("new list data ~p", [NewData]),
+	?DEBUG("new list data ~p", [NewData]),
 	mnesia:dirty_write(ListTableName, NewData).
 
 write_messages_to_sql(_Jid, [], _Tablename)->
