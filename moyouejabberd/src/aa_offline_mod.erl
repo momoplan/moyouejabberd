@@ -29,6 +29,7 @@ send_offline_msg(JID) ->
 	try 
 		{jid,User,Domain,_,_,_,_} = JID,
 		KEY = User++"@"++Domain++"/offline_msg",
+		?INFO_MSG("@@@ start get offline message for ~p", [KEY]),
 
 		{ok,R} = aa_usermsg_handler:get_offline_msg(JID),
 
