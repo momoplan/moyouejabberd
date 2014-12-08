@@ -55,7 +55,7 @@ handle_http(Req) ->
 					   []
 			   end,
 		if Args == [] ->
-			   skip;
+			   http_response({#success{success=false,entity=list_to_binary("empty argrment")},Req});
 		   true ->			   
 			   [{"body",Body}] = Args,
 			   ?DEBUG("###### handle_http :::> Body=~p",[Body]),
