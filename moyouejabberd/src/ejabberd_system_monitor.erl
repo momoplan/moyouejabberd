@@ -98,7 +98,7 @@ process_command(From, To, Packet) ->
 init(Opts) ->
     LH = proplists:get_value(large_heap, Opts),
     process_flag(priority, high),
-    erlang:system_monitor(self(), [{large_heap, LH}]),
+    erlang:system_monitor(self(), [{large_heap, LH},busy_dist_port,busy_port]),
     lists:foreach(
       fun(Host) ->
 	      ejabberd_hooks:add(local_send_to_resource_hook, Host,
@@ -118,7 +118,7 @@ init(Opts) ->
 handle_call({get, large_heap}, _From, State) ->
     {reply, get_large_heap(), State};
 handle_call({set, large_heap, NewValue}, _From, State) ->
-    MonSettings = erlang:system_monitor(self(), [{large_heap, NewValue}]),
+    MonSettings = erlang:system_monitor(self(), [{large_heap, NewValue},busy_dist_port,busy_port]),
     OldLH = get_large_heap(MonSettings),
     NewLH = get_large_heap(),
     {reply, {lh_changed, OldLH, NewLH}, State};
@@ -153,6 +153,13 @@ handle_info({monitor, Pid, large_heap, Info}, State) ->
 		  process_flag(priority, high),
 		  process_large_heap(Pid, Info)
 	  end),
+	?ERROR_MSG("got large_heap ~p, Reason:~p", [Pid, Info]),
+    {noreply, State};
+handle_info({monitor, Pid, busy_dist_port, Info}, State) ->
+	?ERROR_MSG("got busy_dist_port ~p, Reason:~p", [Pid, Info]),
+    {noreply, State};
+handle_info({monitor, Pid, busy_port, Info}, State) ->
+	?ERROR_MSG("got busy_port ~p, Reason:~p", [Pid, Info]),
     {noreply, State};
 handle_info(_Info, State) ->
     {noreply, State}.
