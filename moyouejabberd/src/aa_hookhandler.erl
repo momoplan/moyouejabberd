@@ -9,7 +9,7 @@
 -define(HTTP_HEAD,"application/x-www-form-urlencoded").
 -define(TIME_OUT,1000*5).
 
--define(PUSH_PID_NUM, 64).
+-define(PUSH_PID_NUM, 128).
 
 -define(DBCONNNUM, 100).
 
@@ -28,13 +28,15 @@
 	 user_receive_packet_handler/4,
 	 send_message_to_user/3,
 	 refresh_bak_info/0,
-	 rlcfg/0
+	 rlcfg/0,
+	 stop/0,
+	 reinit_pushpids/0
 	]).
 
 start_link() ->
 	gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
-stop(Host) ->
+stop() ->
 	lists:foreach(
 	  fun(Host) ->
 			  ejabberd_hooks:delete(user_send_packet,Host,?MODULE, user_send_packet_handler ,80),
@@ -46,6 +48,8 @@ stop(Host) ->
 	ok.
 
 
+reinit_pushpids() ->
+	gen_server:call(?MODULE, rebuild_pushpids).
 
 refresh_bak_info() ->
 	gen_server:call(?MODULE, refresh_bak).
@@ -325,6 +329,13 @@ handle_call(reload_config, _From, State) ->
 	ejabberd_config:reload_config(),
 	{reply, reload_ok, State};
 
+handle_call(rebuild_pushpids, _From, State) ->
+	[exit(Pid, kill) || Pid <- State#state.push_pids],
+	PushPids = [spawn(fun() ->
+							  local_handle_offline_message()
+					  end) || _ <- lists:duplicate(?PUSH_PID_NUM, 1)],
+	{reply, rebuild_ok, State#state{push_pids = PushPids}};
+
 handle_call(_Call, _From, State)->
 	{reply, ok, State}.
 
@@ -384,7 +395,7 @@ handle_cast({deal_offline_msg, From,To,Packet}, State) ->
 	case is_process_alive(Pid) of
 		true ->
 			Pid ! {offline_msg, From, To, Packet},
-			{noreply, #state{push_pids = PushPids}};
+			{noreply, State#state{push_pids = PushPids}};
 		false ->
 			NewPids = lists:delete(Pid, PushPids),
 			deal_offline_msg(From, To, Packet),
