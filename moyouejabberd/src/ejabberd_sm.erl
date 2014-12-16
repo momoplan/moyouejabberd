@@ -466,67 +466,10 @@ do_route(From, To, Packet) ->
     case LResource of
 		"" ->
 		    case Name of
-				"presence" ->
-				    {Pass, _Subsc} = case xml:get_attr_s("type", Attrs) of
-						"subscribe" ->
-							Reason = xml:get_path_s(
-								   Packet,
-								   [{elem, "status"}, cdata]),
-							{is_privacy_allow(From, To, Packet) andalso
-							 ejabberd_hooks:run_fold(
-							   roster_in_subscription,
-							   LServer,
-							   false,
-							   [User, Server, From, subscribe, Reason]),
-							 true};
-					    "subscribed" ->
-							{is_privacy_allow(From, To, Packet) andalso
-							 ejabberd_hooks:run_fold(
-							   roster_in_subscription,
-							   LServer,
-							   false,
-							   [User, Server, From, subscribed, ""]),
-							 true};
-					    "unsubscribe" ->
-							{is_privacy_allow(From, To, Packet) andalso
-							 ejabberd_hooks:run_fold(
-							   roster_in_subscription,
-							   LServer,
-							   false,
-							   [User, Server, From, unsubscribe, ""]),
-							 true};
-					    "unsubscribed" ->
-							{is_privacy_allow(From, To, Packet) andalso
-							 ejabberd_hooks:run_fold(
-							   roster_in_subscription,
-							   LServer,
-							   false,
-							   [User, Server, From, unsubscribed, ""]),
-							 true};
-					    _ ->
-							{true, false}
-					end,
-				    if Pass ->
-					    PResources = get_user_present_resources(LUser, LServer),
-					    lists:foreach(
-					      fun({_, R}) ->
-						  	do_route(From,jlib:jid_replace_resource(To, R),Packet)
-					      end, PResources);
-				       true ->
-					    ok
-				    end;
 				"message" ->
-					%% 这是我们关心的
 				    route_message(From, To, Packet);
 				"iq" ->
 				    process_iq(From, To, Packet);
-				"broadcast" ->
-				    lists:foreach(
-				      fun(R) ->
-					      do_route(From,
-						       jlib:jid_replace_resource(To, R),
-						       Packet)
-				      end, get_user_resources(User, Server));
 				_ ->
 				    ok
 		    end;
@@ -558,155 +501,15 @@ do_route(From, To, Packet) ->
 		    end
     end.
 
-%% The default list applies to the user as a whole,
-%% and is processed if there is no active list set
-%% for the target session/resource to which a stanza is addressed,
-%% or if there are no current sessions for the user.
-is_privacy_allow(From, To, Packet) ->
-    User = To#jid.user,
-    Server = To#jid.server,
-    PrivacyList = ejabberd_hooks:run_fold(privacy_get_user_list, Server,
-					  #userlist{}, [User, Server]),
-    is_privacy_allow(From, To, Packet, PrivacyList).
 
-%% Check if privacy rules allow this delivery
-%% Function copied from ejabberd_c2s.erl
-is_privacy_allow(From, To, Packet, PrivacyList) ->
-    User = To#jid.user,
-    Server = To#jid.server,
-    allow == ejabberd_hooks:run_fold(
-	       privacy_check_packet, Server,
-	       allow,
-	       [User,
-		Server,
-		PrivacyList,
-		{From, To, Packet},
-		in]).
 
-%% XXX 2014-3-5 : 这个方法的逻辑，单独做成一个 TASK 模块，分布到外部完成了，此处作废
-%% route_message(From, To, Packet) ->
-%% 	%% TODO 1002:如果能在这里判断出 session 是否有效，一切问题就都解决了其实。
-%% 	%% 在这里做一个 ack 给接收人 
-%% 	MsgType = xml:get_tag_attr_s("msgtype", Packet),
-%% 	%% 如果收消息人所在的域，需要做ACK，就执行第一段逻辑，否则直接路由消息到目标地址
-%% 	#jid{lserver=Domain} = To,
-%% 	ACK_TO = case catch ejabberd_config:get_local_option({ack_to,Domain}) of 
-%% 		true -> true;
-%% 		_ -> false
-%% 	end,
-%% 	%% 默认接收放的ACK超时是30秒，建议设置4-5分钟，单位毫秒
-%% 	ACK_TO_TIMEOUT = case catch ejabberd_config:get_local_option({ack_to_timeout,Domain}) of 
-%% 		N when is_integer(N) -> N;
-%% 		_ -> 10*1000
-%% 	end,
-%% 	?DEBUG("[route_message] ~p ::::> ACK_TO=~p ; ACK_TO_TIMEOUT=~p ; MsgType=~p",["01",ACK_TO,ACK_TO_TIMEOUT,MsgType]),
-%% 	if 
-%% 		%% 140222 : 这里在逻辑上也要做一个比较大的修正；
-%% 		%% 140222 : 再此处会拦截一些 msgtype 为指定值的消息，产生监听进程，而不是直接发送ack消息等待响应了
-%% 		%% TODO 暂时只拦截 normalchat 消息
-%% 		ACK_TO , MsgType =:= "normalchat" ->
-%% 			%% 这里还有一个逻辑，看看收件人的 session 是否有效，如果无效，如果有效校验就ACK校验，无效就算了
-%% 		    LUser = To#jid.luser,
-%% 		    LServer = To#jid.lserver,
-%% 		    PrioRes = get_user_present_resources(LUser, LServer),
-%% 			?DEBUG("[route_message] ~p ::::>",["02"]),
-%% 			if 
-%% 				length(PrioRes) > 0 ->
-%% 					?DEBUG("[route_message] ~p ::::>",["03"]),
-%% 					%% to 的 session 存在，需要 ACK 
-%% 					%% 140222 : 这个地方，必须得拿原始消息的ID做进程标识了，因为取消了单独的ACK
-%% 					%% ID = randoms:get_string(),
-%% 					{_,"message",Attr,_} = Packet,
-%% 					D = dict:from_list(Attr),
-%% 					case dict:is_key("id", D) of 
-%% 						true -> 
-%% 						ID = dict:fetch("id", D),
-%% 							%% 注册
-%% 							%% 2014-2-27 : 注册进程有限制，无法满足要求，此处要用 mnesia内存表重构
-%% 							PPP = spawn(fun()-> route_message({ack,ACK_TO_TIMEOUT},From, To, Packet) end),
-%% 							ack(set,list_to_atom(ID),PPP);
-%% 							%% register(list_to_atom(ID), PPP);
-%% 						_ -> 
-%% 							skip
-%% 					end,
-%% 					%% 发送ACK
-%% 					%% send_ack(ID, To,);
-%% 					%% 140222 : 用一个正常的消息取代 ACK 消息
-%% 					route_message(do,From, To, Packet);
-%% 				true ->
-%% 					?DEBUG("[route_message] after ~p ::::>",["04"]),
-%% 					%% to 的 session 不存在，直接就能识别成离线消息
-%% 					route_message(do,From, To, Packet)
-%% 			end;
-%% 		true ->
-%% 			?DEBUG("[route_message] after ~p ::::>",["05"]),
-%% 			%% 如果发送的是 ACK 的消息，就直接路由就行了
-%% 			route_message(do,From, To, Packet)
-%% 	end.
-%% route_message({ack,ACK_TO_TIMEOUT},From, To, Packet) ->
-%% 	%% 非 ACK 的消息，都认为是业务相关的，都在这做一下收信人 session 校验
-%% 	?INFO_MSG("AACCKK route_message/4 ack ::::> ~p",{From, To, Packet}),
-%% 	receive
-%% 		{ack,ID} ->
-%% 			?DEBUG("xxxx_receive_ack ::::> ID=~p",[ID]),
-%% 			ack(del,ID);
-%% 			%% 140222 : 用真实消息代替ACK消息，所以这里不许要再发消息了，确认以后，结束
-%% 			%% route_message(do,From, To, Packet)
-%% 		stop ->
-%% 			stop
-%% 	after ACK_TO_TIMEOUT ->
-%% 		?DEBUG("[route_message_ack] after 00 ::::> {From, To, Packet} = ~p",[{From, To, Packet}]),
-%% 		%% 5秒以后，如果得不到ACK的回应，就关闭这个 session
-%% 		%% TODO 2014-02-28 : 我决定，不再T掉收消息人的链接，改成循环发送更稳定，更安全
-%% 		%% 要求客户端要处理重复消息，极端情况下会产生ID相同的重复消息
-%% 		{_,"message",Attr,_} = Packet,
-%% 		D = dict:from_list(Attr),
-%% 		ID = dict:fetch("id", D),
-%% 		ack(del,list_to_atom(ID)),
-%% 		route_message(From, To, Packet),
-%% 		%% TODO 重新发送时，要调用离线的回调接口，产生通知；
-%% 		aa_hookhandler:offline_message_hook_handler(From,To,Packet)
-%% 
-%% 	%%	#jid{user = User, server = Server} = To,
-%% 	%%    	case mnesia:dirty_index_read(session, {User, Server}, #session.us) of
-%% 	%%		[] ->
-%% 	%%			?DEBUG("[route_message_ack] after ~p ::::>",["01"]),
-%% 	%%		    offline;
-%% 	%%		Ss ->
-%% 	%%			?DEBUG("[route_message_ack] after ~p ::::> Ss_length=~p",["02",length(Ss)]),
-%% 	%%			%% -record(session, {sid, usr, us, priority, info}).
-%% 	%%			lists:foreach(fun(Session) -> 
-%% 	%%				SID = Session#session.sid,
-%% 	%%				USR = Session#session.usr,
-%% 	%%		  		?DEBUG("[route_message_ack] after ~p ::::> SID=~p ; USR=~p",["03",SID,USR]),
-%% 	%%				{UUU,SSS,RRR} = USR,
-%% 	%%				%% TODO 这里不光要关闭 session，还要关闭 c2s 链接
-%% 	%%				case ejabberd_sm:get_session_pid(UUU,SSS,RRR) of
-%% 	%%					Pid when is_pid(Pid) ->
-%% 	%%				  		?DEBUG("[route_message_ack] after ~p ::::>",["04"]),
-%% 	%%					    ejabberd_c2s:stop(Pid);
-%% 	%%					_ ->
-%% 	%%						?DEBUG("[route_message_ack] after ~p ::::>",["05"]),
-%% 	%%					    ok
-%% 	%%			    end,			
-%% 	%%				close_session(SID, UUU,SSS,RRR)
-%% 	%%			end, Ss)
-%% 	%%    	end,
-%% 	%%	route_message(do,From, To, Packet)
-%% 	end;
-%% 
-%% route_message(do,From, To, Packet) ->
 route_message(From, To, Packet) ->
     LUser = To#jid.luser,
     LServer = To#jid.lserver,
     PrioRes = get_user_present_resources(LUser, LServer),
     case catch lists:max(PrioRes) of
-		%% 如果有多个源，那么每个都要发，多数情况只有一个源存在
-		%% TODO 1001:走这个分支，就证明这个 session 是有效的，不会是一个离线消息，问题就出在这里
 		{Priority, _R} when is_integer(Priority), Priority >= 0 ->
 		    lists:foreach(
-		      %% Route messages to all priority that equals the max, if
-		      %% positive
 		      fun({P, R}) when P == Priority ->
 			      LResource = jlib:resourceprep(R),
 			      USR = {LUser, LServer, LResource},
@@ -726,34 +529,7 @@ route_message(From, To, Packet) ->
 		      PrioRes);
 	    	%% 以下分支用来处理离线消息
 		_ ->
-		    case xml:get_tag_attr_s("type", Packet) of
-				"error" ->
-				    ok;
-				"groupchat" ->
-				    	?DEBUG("**************** ~p",["groupchat"]),
-					bounce_offline_message(From, To, Packet);
-				"headline" ->
-				    	?DEBUG("**************** ~p",["headline"]),
-				    	bounce_offline_message(From, To, Packet);
-				_ ->
-				    case ejabberd_auth:is_user_exists(LUser, LServer) of
-						true ->
-				    			?DEBUG("**************** ~p",["is_user_exists"]),
-						    case is_privacy_allow(From, To, Packet) of
-								true ->
-									LOG_MSG = [route_message_offline_message_hook,LServer, From, To, Packet],
-									?INFO_MSG("~p~n LServer=~p~n From=~p~n To=~p~n Packet=~p~n",LOG_MSG),
-				    					?DEBUG("**************** ~p",["is_privacy_allow"]),
-									ejabberd_hooks:run(offline_message_hook,LServer,[From, To, Packet]);
-								false ->
-								    ok
-						    end;
-						_ ->
-						    Err = jlib:make_error_reply(Packet, ?ERR_SERVICE_UNAVAILABLE),
-				    			?DEBUG("**************** ~p; Err=~p",["not is_privacy_allow",Err]),
-						    ejabberd_router:route(To, From, Err)
-				    end
-		    end
+		    ok
     end.
 
 
