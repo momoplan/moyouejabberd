@@ -59,9 +59,9 @@ start(Port)->
 		thrift_socket_server:start([{handler, Handler},
 									{service, aa_inf_thrift},
 									{port, Port},
-									{name, aa_inf_server}]).
-%% 									{name, aa_inf_server},
-%% 									{socket_opts, [{recv_timeout, 60*60*1000}]}]).
+%%									{name, aa_inf_server}]).
+ 									{name, aa_inf_server},
+ 									{socket_opts, [{recv_timeout, 60*60*1000}]}]).
 
 
 stop(Server)->

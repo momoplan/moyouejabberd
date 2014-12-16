@@ -25,7 +25,6 @@
 	 start_link/0,
 	 user_send_packet_handler/3,
 	 offline_message_hook_handler/3,
-	 user_receive_packet_handler/4,
 	 send_message_to_user/3,
 	 refresh_bak_info/0,
 	 rlcfg/0,
@@ -240,7 +239,8 @@ send_message_to_user(#jid{user=FU, server = Domain}=From, #jid{user = ToUser}=To
 		   RAttr1 = [{"msgTime",MsgTime}|RAttr0],
 		   RPacket = {Tag,E,RAttr1,Body},
 		   ?DEBUG("send message trigger store msg ~p", [SYNCID]),
-		   aa_usermsg_handler:store_msg(SYNCID, From, To, RPacket);
+		   aa_usermsg_handler:store_msg(SYNCID, From, To, RPacket),
+	   		user_receive_packet_handler(From,To,Packet);
 	   MT=:="msgStatus",ToUser=/="messageack" ->
 		   ?DEBUG("send message trigger del msg ~p", [SYNCID]),
 		   aa_usermsg_handler:del_msg(SYNCID, From),
@@ -249,7 +249,7 @@ send_message_to_user(#jid{user=FU, server = Domain}=From, #jid{user = ToUser}=To
 		   skip
 	end.
 
-user_receive_packet_handler(_JID, #jid{user = FU, server=FD}=From, To, Packet) ->
+user_receive_packet_handler(#jid{user = FU, server=FD}=From, To, Packet) ->
 	[_,E|_] = tuple_to_list(Packet),
 	Domain = FD,
 	if FU == "messageack" ->
@@ -297,7 +297,7 @@ init([]) ->
 			  ejabberd_hooks:add(user_send_packet,Host,?MODULE, user_send_packet_handler ,80),
 			  ejabberd_hooks:add(offline_message_hook, Host, ?MODULE, offline_message_hook_handler, 45),
 			  ?INFO_MSG("#### offline_message_hook Host=~p~n",[Host]),
-			  ejabberd_hooks:add(user_receive_packet, Host, ?MODULE, user_receive_packet_handler, 45),
+%%			  ejabberd_hooks:add(user_receive_packet, Host, ?MODULE, user_receive_packet_handler, 45),
 			  ?INFO_MSG("#### user_receive_packet Host=~p~n",[Host])
 
 	  end, ?MYHOSTS),

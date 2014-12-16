@@ -545,6 +545,9 @@ wait_for_auth({xmlstreamelement, El}, StateData) ->
 				ejabberd_hooks:run_fold(
 				  privacy_get_user_list, StateData#state.server,
 				  #userlist{},
+				ejabberd_hooks:run(user_available_hook,
+									   StateData#state.server,
+									   JID),
 				  [U, StateData#state.server]),
                             NewStateData =
                                 StateData#state{
@@ -557,6 +560,7 @@ wait_for_auth({xmlstreamelement, El}, StateData) ->
 					     pres_f = ?SETS:from_list(Fs1),
 					     pres_t = ?SETS:from_list(Ts1),
 					     privacy_list = PrivList},
+				
 			    fsm_next_state_pack(session_established,
                                                 NewStateData);
 			_ ->
@@ -1802,9 +1806,6 @@ presence_update(From, Packet, StateData) ->
 		NewState =
 			if
 				FromUnavail ->
-					ejabberd_hooks:run(user_available_hook,
-									   NewStateData#state.server,
-									   [NewStateData#state.jid]),
 					if NewPriority >= 0 ->
 						   resend_offline_messages(NewStateData),
 						   resend_subscription_requests(NewStateData);

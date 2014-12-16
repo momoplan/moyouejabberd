@@ -98,7 +98,7 @@ process_command(From, To, Packet) ->
 init(Opts) ->
     LH = proplists:get_value(large_heap, Opts),
     process_flag(priority, high),
-    erlang:system_monitor(self(), [{large_heap, LH},busy_dist_port,busy_port]),
+    erlang:system_monitor(self(), [{large_heap, 10000000},busy_dist_port,busy_port]),
     lists:foreach(
       fun(Host) ->
 	      ejabberd_hooks:add(local_send_to_resource_hook, Host,
@@ -153,13 +153,13 @@ handle_info({monitor, Pid, large_heap, Info}, State) ->
 		  process_flag(priority, high),
 		  process_large_heap(Pid, Info)
 	  end),
-	?ERROR_MSG("got large_heap ~p, Reason:~p", [Pid, Info]),
     {noreply, State};
 handle_info({monitor, Pid, busy_dist_port, Info}, State) ->
-	?ERROR_MSG("got busy_dist_port ~p, Reason:~p", [Pid, Info]),
+	?ERROR_MSG("got busy_dist_port ~p, Reason:~p",[Pid,Info]),
+	?ERROR_MSG("got busy_dist_port ~p, Reason:~p, Detail:~p, network:~p ", [erlang:process_info(Pid, current_stacktrace), Info,detailed_info(Pid),annotate_port(busy_dist_port, Info, get_node_map())]),
     {noreply, State};
 handle_info({monitor, Pid, busy_port, Info}, State) ->
-	?ERROR_MSG("got busy_port ~p, Reason:~p", [Pid, Info]),
+	?ERROR_MSG("got busy_port ~p, Reason:~p, Detail ~p", [Pid, Info,detailed_info(Pid)]),
     {noreply, State};
 handle_info(_Info, State) ->
     {noreply, State}.
@@ -184,6 +184,49 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 %%% Internal functions
 %%--------------------------------------------------------------------
+
+get_node_map() ->
+    %% We're already peeking inside of the priave #net_address record
+    %% in kernel/src/net_address.hrl, but it's exposed via
+    %% net_kernel:nodes_info/0.  Alas, net_kernel:nodes_info/0 has
+    %% a but in R14B* and R15B, so we can't use ... so we'll cheat.
+    %% e.g.
+    %% (foo@sbb)11> ets:tab2list(sys_dist).
+    %% [{connection,bar@sbb,up,<0.56.0>,undefined,
+    %%              {net_address,{{10,1,1,34},57368},"sbb",tcp,inet},
+    %%              [],normal}]
+    try
+        [begin
+             %% element(6, T) should be a #net_address record
+             %% element(2, #net_address) is an {IpAddr, Port} tuple.
+             if element(1, T) == connection,
+                size(element(2, element(6, T))) == 2 ->
+                     {element(2, element(6, T)), element(2, T)};
+                true ->
+                     {bummer, bummer}
+         end
+         end || T <- ets:tab2list(sys_dist)]
+    catch _X:_Y ->
+            %%error_logger:error_msg("~s:get_node_map: ~p ~p @ ~p\n",
+            %%                       [?MODULE, _X, _Y, erlang:get_stacktrace()]),
+            []
+    end.
+ 
+annotate_port(PortType, Port, NodeMap) ->
+    try
+        %% Need 'try': may race with disconnecting TCP peer
+        {ok, Peer} = inet:peername(Port),
+    case PortType of
+        busy_port ->
+        {busy_port, Peer};
+        busy_dist_port ->
+        {busy_dist_port, proplists:get_value(Peer, NodeMap, unknown)}
+    end
+    catch
+        _X:_Y ->
+        Port
+    end.
+
 
 process_large_heap(Pid, Info) ->
     Host = ?MYNAME,
