@@ -814,9 +814,10 @@ wait_for_session({xmlstreamelement, El}, StateData) ->
 				     pres_f = ?SETS:from_list(Fs1),
 				     pres_t = ?SETS:from_list(Ts1),
 				     privacy_list = PrivList},
-			ejabberd_hooks:run(user_available_hook,
-									   StateData#state.server,
-									   [JID]),
+			{ok,R}= aa_usermsg_handler:get_offline_msg(JID),
+			lists:foreach(fun({_,_, PP})->
+						 send_element(StateData, PP) 
+					  end,R) ,
 		    fsm_next_state_pack(session_established,
                                         NewStateData);
 		_ ->

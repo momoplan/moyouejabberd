@@ -529,6 +529,7 @@ route_message(From, To, Packet) ->
 		      PrioRes);
 	    	%% 以下分支用来处理离线消息
 		_ ->
+			?DEBUG("user not online ~p~n", [Packet]),
 		    ok
     end.
 
