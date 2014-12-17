@@ -121,7 +121,7 @@ open_session(SID, User, Server, Resource, Info) ->
 %%				close_session(SID2, UUU,SSS,RRR)
 %%			end, Ss)
 %%	end,
-	set_session(SID, User, Server, Resource, undefined, Info),
+	set_session(SID, User, Server, Resource, 0, Info),
 	mnesia:dirty_update_counter(session_counter,jlib:nameprep(Server), 1),
 	check_for_sessions_to_replace(User, Server, Resource),
 	JID = jlib:make_jid(User, Server, Resource),
