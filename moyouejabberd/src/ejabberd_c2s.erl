@@ -50,7 +50,6 @@
 %% gen_fsm callbacks
 -export([init/1,
 	 wait_for_stream/2,
-	 wait_for_auth/2,
 	 wait_for_feature_request/2,
 	 wait_for_bind/2,
 	 wait_for_session/2,
@@ -304,135 +303,115 @@ wait_for_stream({xmlstreamstart, _Name, Attrs}, StateData) ->
 				   ""
 			   end,
 		    change_shaper(StateData, jlib:make_jid("", Server, "")),
-		    case xml:get_attr_s("version", Attrs) of
-			"1.0" ->
-			    send_header(StateData, Server, "1.0", DefaultLang),
-			    case StateData#state.authenticated of
-				false ->
-				    SASLState =
-					cyrsasl:server_new(
-					  "jabber", Server, "", [],
-					  fun(U) ->
-						  ejabberd_auth:get_password_with_authmodule(
-						    U, Server)
-					  end,
-					  fun(U, P) ->
-						  ejabberd_auth:check_password_with_authmodule(
-						    U, Server, P)
-					  end,
-					  fun(U, P, D, DG) ->
-						  ejabberd_auth:check_password_with_authmodule(
-						    U, Server, P, D, DG)
-					  end),
-				    Mechs = lists:map(
-					      fun(S) ->
-						      {xmlelement, "mechanism", [],
-						       [{xmlcdata, S}]}
-					      end, cyrsasl:listmech(Server)),
-				    SockMod =
-					(StateData#state.sockmod):get_sockmod(
-					  StateData#state.socket),
-				    Zlib = StateData#state.zlib,
-				    CompressFeature =
-					case Zlib andalso
-					    ((SockMod == gen_tcp) orelse
-					     (SockMod == tls)) of
+
+		    send_header(StateData, Server, "1.0", DefaultLang),
+		    case StateData#state.authenticated of
+			false ->
+			    SASLState =
+				cyrsasl:server_new(
+				  "jabber", Server, "", [],
+				  fun(U) ->
+					  ejabberd_auth:get_password_with_authmodule(
+					    U, Server)
+				  end,
+				  fun(U, P) ->
+					  ejabberd_auth:check_password_with_authmodule(
+					    U, Server, P)
+				  end,
+				  fun(U, P, D, DG) ->
+					  ejabberd_auth:check_password_with_authmodule(
+					    U, Server, P, D, DG)
+				  end),
+			    Mechs = lists:map(
+				      fun(S) ->
+					      {xmlelement, "mechanism", [],
+					       [{xmlcdata, S}]}
+				      end, cyrsasl:listmech(Server)),
+			    SockMod =
+				(StateData#state.sockmod):get_sockmod(
+				  StateData#state.socket),
+			    Zlib = StateData#state.zlib,
+			    CompressFeature =
+				case Zlib andalso
+				    ((SockMod == gen_tcp) orelse
+				     (SockMod == tls)) of
+				    true ->
+					[{xmlelement, "compression",
+					  [{"xmlns", ?NS_FEATURE_COMPRESS}],
+					  [{xmlelement, "method",
+					    [], [{xmlcdata, "zlib"}]}]}];
+				    _ ->
+					[]
+				end,
+			    TLS = StateData#state.tls,
+			    TLSEnabled = StateData#state.tls_enabled,
+			    TLSRequired = StateData#state.tls_required,
+			    TLSFeature =
+				case (TLS == true) andalso
+				    (TLSEnabled == false) andalso
+				    (SockMod == gen_tcp) of
+				    true ->
+					case TLSRequired of
 					    true ->
-						[{xmlelement, "compression",
-						  [{"xmlns", ?NS_FEATURE_COMPRESS}],
-						  [{xmlelement, "method",
-						    [], [{xmlcdata, "zlib"}]}]}];
+						[{xmlelement, "starttls",
+						  [{"xmlns", ?NS_TLS}],
+						  [{xmlelement, "required",
+						    [], []}]}];
 					    _ ->
-						[]
-					end,
-				    TLS = StateData#state.tls,
-				    TLSEnabled = StateData#state.tls_enabled,
-				    TLSRequired = StateData#state.tls_required,
-				    TLSFeature =
-					case (TLS == true) andalso
-					    (TLSEnabled == false) andalso
-					    (SockMod == gen_tcp) of
-					    true ->
-						case TLSRequired of
-						    true ->
-							[{xmlelement, "starttls",
-							  [{"xmlns", ?NS_TLS}],
-							  [{xmlelement, "required",
-							    [], []}]}];
-						    _ ->
-							[{xmlelement, "starttls",
-							  [{"xmlns", ?NS_TLS}], []}]
-						end;
-					    false ->
-						[]
-					end,
-				    send_element(StateData,
-						 {xmlelement, "stream:features", [],
-						  TLSFeature ++ CompressFeature ++
-						  [{xmlelement, "mechanisms",
-						    [{"xmlns", ?NS_SASL}],
-						    Mechs}] ++
-						  ejabberd_hooks:run_fold(
-						    c2s_stream_features,
-						    Server,
-						    [], [Server])}),
-				    fsm_next_state(wait_for_feature_request,
-					       StateData#state{
-						 server = Server,
-						 sasl_state = SASLState,
-						 lang = Lang});
-				_ ->
-				    case StateData#state.resource of
-					"" ->
-					    RosterVersioningFeature =
-						ejabberd_hooks:run_fold(
-						  roster_get_versioning_feature,
-						  Server, [], [Server]),
-				            StreamFeatures =
-						[{xmlelement, "bind",
-						  [{"xmlns", ?NS_BIND}], []},
-						 {xmlelement, "session",
-						  [{"xmlns", ?NS_SESSION}], []}]
-						++ RosterVersioningFeature
-						++ ejabberd_hooks:run_fold(
-						     c2s_stream_features,
-						     Server,
-						     [], [Server]),
-					    send_element(
-					      StateData,
-					      {xmlelement, "stream:features", [],
-					       StreamFeatures}),
-					    fsm_next_state(wait_for_bind,
-						       StateData#state{
-							 server = Server,
-							 lang = Lang});
-					_ ->
-					    send_element(
-					      StateData,
-					      {xmlelement, "stream:features", [], []}),
-					    fsm_next_state(wait_for_session,
-						       StateData#state{
-							 server = Server,
-							 lang = Lang})
-				    end
-			    end;
+						[{xmlelement, "starttls",
+						  [{"xmlns", ?NS_TLS}], []}]
+					end;
+				    false ->
+					[]
+				end,
+			    send_element(StateData,
+					 {xmlelement, "stream:features", [],
+					  TLSFeature ++ CompressFeature ++
+					  [{xmlelement, "mechanisms",
+					    [{"xmlns", ?NS_SASL}],
+					    Mechs}] ++
+					  ejabberd_hooks:run_fold(
+					    c2s_stream_features,
+					    Server,
+					    [], [Server])}),
+			    fsm_next_state(wait_for_feature_request,
+				       StateData#state{
+					 server = Server,
+					 sasl_state = SASLState,
+					 lang = Lang});
 			_ ->
-			    send_header(StateData, Server, "", DefaultLang),
-			    if
-				(not StateData#state.tls_enabled) and
-				StateData#state.tls_required ->
+			    case StateData#state.resource of
+				"" ->
+				    RosterVersioningFeature =
+					ejabberd_hooks:run_fold(
+					  roster_get_versioning_feature,
+					  Server, [], [Server]),
+			            StreamFeatures =
+					[{xmlelement, "bind",
+					  [{"xmlns", ?NS_BIND}], []},
+					 {xmlelement, "session",
+					  [{"xmlns", ?NS_SESSION}], []}]
+					++ RosterVersioningFeature
+					++ ejabberd_hooks:run_fold(
+					     c2s_stream_features,
+					     Server,
+					     [], [Server]),
 				    send_element(
 				      StateData,
-				      ?POLICY_VIOLATION_ERR(
-					 Lang,
-					 "Use of STARTTLS required")),
-				    send_trailer(StateData),
-				    {stop, normal, StateData};
-				true ->
-				    fsm_next_state(wait_for_auth,
-						   StateData#state{
-						     server = Server,
-						     lang = Lang})
+				      {xmlelement, "stream:features", [],
+				       StreamFeatures}),
+				    fsm_next_state(wait_for_bind,
+					       StateData#state{
+						 server = Server,
+						 lang = Lang});
+				_ ->
+				    send_element(
+				      StateData,
+				      {xmlelement, "stream:features", [], []}),
+				    fsm_next_state(wait_for_session,
+					       StateData#state{
+						 server = Server,
+						 lang = Lang})
 			    end
 		    end;
 		_ ->
@@ -470,149 +449,6 @@ wait_for_stream({xmlstreamerror, _}, StateData) ->
 wait_for_stream(closed, StateData) ->
     {stop, normal, StateData}.
 
-
-wait_for_auth({xmlstreamelement, El}, StateData) ->
-    case is_auth_packet(El) of
-	{auth, _ID, get, {U, _, _, _}} ->
-	    {xmlelement, Name, Attrs, _Els} = jlib:make_result_iq_reply(El),
-	    case U of
-		"" ->
-		    UCdata = [];
-		_ ->
-		    UCdata = [{xmlcdata, U}]
-	    end,
-	    Res = case ejabberd_auth:plain_password_required(
-			 StateData#state.server) of
-		      false ->
-			  {xmlelement, Name, Attrs,
-			   [{xmlelement, "query", [{"xmlns", ?NS_AUTH}],
-			     [{xmlelement, "username", [], UCdata},
-			      {xmlelement, "password", [], []},
-			      {xmlelement, "digest", [], []},
-			      {xmlelement, "resource", [], []}
-			     ]}]};
-		      true ->
-			  {xmlelement, Name, Attrs,
-			   [{xmlelement, "query", [{"xmlns", ?NS_AUTH}],
-			     [{xmlelement, "username", [], UCdata},
-			      {xmlelement, "password", [], []},
-			      {xmlelement, "resource", [], []}
-			     ]}]}
-		  end,
-	    send_element(StateData, Res),
-	    fsm_next_state(wait_for_auth, StateData);
-	{auth, _ID, set, {_U, _P, _D, ""}} ->
-	    Err = jlib:make_error_reply(
-		    El,
-		    ?ERR_AUTH_NO_RESOURCE_PROVIDED(StateData#state.lang)),
-	    send_element(StateData, Err),
-	    fsm_next_state(wait_for_auth, StateData);
-	{auth, _ID, set, {U, P, D, R}} ->
-	    JID = jlib:make_jid(U, StateData#state.server, R),
-	    case (JID /= error) andalso
-		(acl:match_rule(StateData#state.server,
-				StateData#state.access, JID) == allow) of
-		true ->
-                    DGen = fun(PW) ->
-                             sha:sha(StateData#state.streamid ++ PW) end,
-		    case ejabberd_auth:check_password_with_authmodule(
-			   U, StateData#state.server, P, D, DGen) of
-			{true, AuthModule} ->
-			    ?INFO_MSG(
-			       "(~w) Accepted legacy authentication for ~s by ~p",
-			       [StateData#state.socket,
-				jlib:jid_to_string(JID), AuthModule]),
-			    SID = {now(), self()},
-			    Conn = get_conn_type(StateData),
-			    Info = [{ip, StateData#state.ip}, {conn, Conn},
-				    {auth_module, AuthModule}],
-			    Res1 = jlib:make_result_iq_reply(El),
-			    Res = setelement(4, Res1, []),
-			    send_element(StateData, Res),
-			    ejabberd_sm:open_session(
-			      SID, U, StateData#state.server, R, Info),
-			    change_shaper(StateData, JID),
-			    {Fs, Ts} = ejabberd_hooks:run_fold(
-					 roster_get_subscription_lists,
-					 StateData#state.server,
-					 {[], []},
-					 [U, StateData#state.server]),
-			    LJID = jlib:jid_tolower(
-				     jlib:jid_remove_resource(JID)),
-			    Fs1 = [LJID | Fs],
-			    Ts1 = [LJID | Ts],
-			    PrivList =
-				ejabberd_hooks:run_fold(
-				  privacy_get_user_list, StateData#state.server,
-				  #userlist{},
-				ejabberd_hooks:run(user_available_hook,
-									   StateData#state.server,
-									   JID),
-				  [U, StateData#state.server]),
-                            NewStateData =
-                                StateData#state{
-					     user = U,
-					     resource = R,
-					     jid = JID,
-					     sid = SID,
-					     conn = Conn,
-					     auth_module = AuthModule,
-					     pres_f = ?SETS:from_list(Fs1),
-					     pres_t = ?SETS:from_list(Ts1),
-					     privacy_list = PrivList},
-				
-			    fsm_next_state_pack(session_established,
-                                                NewStateData);
-			_ ->
-			    IP = peerip(StateData#state.sockmod, StateData#state.socket),
-			    ?INFO_MSG(
-			       "(~w) Failed legacy authentication for ~s from IP ~s (~w)",
-			       [StateData#state.socket,
-				jlib:jid_to_string(JID), jlib:ip_to_list(IP), IP]),
-			    Err = jlib:make_error_reply(
-				    El, ?ERR_NOT_AUTHORIZED),
-			    send_element(StateData, Err),
-			    fsm_next_state(wait_for_auth, StateData)
-		    end;
-		_ ->
-		    if
-			JID == error ->
-			    ?INFO_MSG(
-			       "(~w) Forbidden legacy authentication for "
-			       "username '~s' with resource '~s'",
-			       [StateData#state.socket, U, R]),
-			    Err = jlib:make_error_reply(El, ?ERR_JID_MALFORMED),
-			    send_element(StateData, Err),
-			    fsm_next_state(wait_for_auth, StateData);
-			true ->
-			    ?INFO_MSG(
-			       "(~w) Forbidden legacy authentication for ~s",
-			       [StateData#state.socket,
-				jlib:jid_to_string(JID)]),
-			    Err = jlib:make_error_reply(El, ?ERR_NOT_ALLOWED),
-			    send_element(StateData, Err),
-			    fsm_next_state(wait_for_auth, StateData)
-		    end
-	    end;
-	_ ->
-	    process_unauthenticated_stanza(StateData, El),
-	    fsm_next_state(wait_for_auth, StateData)
-    end;
-
-wait_for_auth(timeout, StateData) ->
-    {stop, normal, StateData};
-
-wait_for_auth({xmlstreamend, _Name}, StateData) ->
-    send_trailer(StateData),
-    {stop, normal, StateData};
-
-wait_for_auth({xmlstreamerror, _}, StateData) ->
-    send_element(StateData, ?INVALID_XML_ERR),
-    send_trailer(StateData),
-    {stop, normal, StateData};
-
-wait_for_auth(closed, StateData) ->
-    {stop, normal, StateData}.
 
 
 wait_for_feature_request({xmlstreamelement, El}, StateData) ->
@@ -978,6 +814,9 @@ wait_for_session({xmlstreamelement, El}, StateData) ->
 				     pres_f = ?SETS:from_list(Fs1),
 				     pres_t = ?SETS:from_list(Ts1),
 				     privacy_list = PrivList},
+			ejabberd_hooks:run(user_available_hook,
+									   StateData#state.server,
+									   JID),
 		    fsm_next_state_pack(session_established,
                                         NewStateData);
 		_ ->
