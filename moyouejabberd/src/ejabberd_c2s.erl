@@ -814,10 +814,10 @@ wait_for_session({xmlstreamelement, El}, StateData) ->
 				     pres_f = ?SETS:from_list(Fs1),
 				     pres_t = ?SETS:from_list(Ts1),
 				     privacy_list = PrivList},
-			{ok,R}= aa_usermsg_handler:get_offline_msg(JID),
-			lists:foreach(fun({_,_, PP})->
-						 send_element(StateData, PP) 
-					  end,R) ,
+			{ok,Messages}= aa_usermsg_handler:get_offline_msg(JID),
+			lists:foreach(fun(Message)->
+						 send_element(StateData,  element(5,Message)) 
+					  end,Messages) ,
 		    fsm_next_state_pack(session_established,
                                         NewStateData);
 		_ ->
