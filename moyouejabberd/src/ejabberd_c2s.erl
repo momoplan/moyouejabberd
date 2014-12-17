@@ -816,7 +816,7 @@ wait_for_session({xmlstreamelement, El}, StateData) ->
 				     privacy_list = PrivList},
 			ejabberd_hooks:run(user_available_hook,
 									   StateData#state.server,
-									   JID),
+									   [JID]),
 		    fsm_next_state_pack(session_established,
                                         NewStateData);
 		_ ->
