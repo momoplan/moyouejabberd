@@ -55,7 +55,7 @@
 	 get_user_info/3,
 	 get_user_ip/3,
 	 is_existing_resource/3
-    	 %% ack/2,ack/3
+             %% ack/2,ack/3
 	]).
 
 %% gen_server callbacks
@@ -91,47 +91,47 @@ start_link() ->
 %% 在 ejabberd_local 模块转过来的，精髓都在这里了，问题也在这里
 route(From, To, Packet) ->
     case catch do_route(From, To, Packet) of
-		{'EXIT', Reason} ->
-	    	?ERROR_MSG("~p~nwhen processing: ~p",[Reason, {From, To, Packet}]);
-		_ ->
-	    	ok
+        {'EXIT', Reason} ->
+            ?ERROR_MSG("~p~nwhen processing: ~p",[Reason, {From, To, Packet}]);
+        _ ->
+            ok
     end.
 
 open_session(SID, User, Server, Resource, Info) ->
-%% 可以T掉前一个链接的代码
-%%	case mnesia:dirty_index_read(session, {User, Server, Resource}, #session.usr) of
-%%		[] ->
-%%			?DEBUG("[open_session_ok] User=~p;Server=~p;Resource=~p ::::>",[User,Server,Resource]);
-%%		Ss ->
-%%			?DEBUG("[open_session_ss] User=~p;Server=~p;Resource=~p ::::>Ss=~p",[User,Server,Resource,Ss]),
-%%			lists:foreach(fun(Session) -> 
-%%				SID2 = Session#session.sid,
-%%				USR = Session#session.usr,
-%%				?DEBUG("[open_session_close_first_ok] User=~p;Server=~p ::::>",[User,Server]),
-%%				{UUU,SSS,RRR} = USR,
-%%				%% TODO 这里不光要关闭 session，还要关闭 c2s 链接
-%%				case ejabberd_sm:get_session_pid(UUU,SSS,RRR) of
-%%					Pid when is_pid(Pid) ->
-%%						?DEBUG("[open_session_stop_ok] User=~p;Server=~p ::::>",[User,Server]),
-%%						ejabberd_c2s:stop(Pid);
-%%					_ ->
-%%						?DEBUG("[open_session_stop_skip_ok] User=~p;Server=~p ::::>",[User,Server]),
-%%						ok
-%%			    	end,			
-%%				close_session(SID2, UUU,SSS,RRR)
-%%			end, Ss)
-%%	end,
-	set_session(SID, User, Server, Resource, 0, Info),
-	mnesia:dirty_update_counter(session_counter,jlib:nameprep(Server), 1),
-	check_for_sessions_to_replace(User, Server, Resource),
-	JID = jlib:make_jid(User, Server, Resource),
-	ejabberd_hooks:run(sm_register_connection_hook, JID#jid.lserver, [SID, JID, Info]).
+    %% 可以T掉前一个链接的代码
+    %%	case mnesia:dirty_index_read(session, {User, Server, Resource}, #session.usr) of
+    %%		[] ->
+    %%			?DEBUG("[open_session_ok] User=~p;Server=~p;Resource=~p ::::>",[User,Server,Resource]);
+    %%		Ss ->
+    %%			?DEBUG("[open_session_ss] User=~p;Server=~p;Resource=~p ::::>Ss=~p",[User,Server,Resource,Ss]),
+    %%			lists:foreach(fun(Session) ->
+    %%				SID2 = Session#session.sid,
+    %%				USR = Session#session.usr,
+    %%				?DEBUG("[open_session_close_first_ok] User=~p;Server=~p ::::>",[User,Server]),
+    %%				{UUU,SSS,RRR} = USR,
+    %%				%% TODO 这里不光要关闭 session，还要关闭 c2s 链接
+    %%				case ejabberd_sm:get_session_pid(UUU,SSS,RRR) of
+    %%					Pid when is_pid(Pid) ->
+    %%						?DEBUG("[open_session_stop_ok] User=~p;Server=~p ::::>",[User,Server]),
+    %%						ejabberd_c2s:stop(Pid);
+    %%					_ ->
+    %%						?DEBUG("[open_session_stop_skip_ok] User=~p;Server=~p ::::>",[User,Server]),
+    %%						ok
+    %%			    	end,
+    %%				close_session(SID2, UUU,SSS,RRR)
+    %%			end, Ss)
+    %%	end,
+    set_session(SID, User, Server, Resource, 0, Info),
+    mnesia:dirty_update_counter(session_counter,jlib:nameprep(Server), 1),
+    check_for_sessions_to_replace(User, Server, Resource),
+    JID = jlib:make_jid(User, Server, Resource),
+    ejabberd_hooks:run(sm_register_connection_hook, JID#jid.lserver, [SID, JID, Info]).
 
 close_session(SID, User, Server, Resource) ->
     Info = case mnesia:dirty_read({session, SID}) of
-	[] -> [];
-	[#session{info=I}] -> I
-    end,
+               [] -> [];
+               [#session{info=I}] -> I
+           end,
     F = fun() ->
 		mnesia:delete({session, SID}),
 		mnesia:dirty_update_counter(session_counter,
@@ -151,17 +151,17 @@ check_in_subscription(Acc, User, Server, _JID, _Type, _Reason) ->
     end.
 
 bounce_offline_message(From, To, Packet) ->
-	?INFO_MSG("~p~n From=~p~n To=~p~n Packet=~p~n",[bounce_offline_message, From, To, Packet]),
+    ?INFO_MSG("~p~n From=~p~n To=~p~n Packet=~p~n",[bounce_offline_message, From, To, Packet]),
     Err = jlib:make_error_reply(Packet, ?ERR_SERVICE_UNAVAILABLE),
     ejabberd_router:route(To, From, Err),
     stop.
 
 disconnect_removed_user(User, Server) ->
     ejabberd_sm:route(
-	  			jlib:make_jid("", "", ""),
-				jlib:make_jid(User, Server, ""),
-				{xmlelement, "broadcast", [],[{exit, "User removed"}]}
-	).
+        jlib:make_jid("", "", ""),
+        jlib:make_jid(User, Server, ""),
+        {xmlelement, "broadcast", [],[{exit, "User removed"}]}
+                     ).
 
 get_user_resources(User, Server) ->
     LUser = jlib:nodeprep(User),
@@ -230,33 +230,33 @@ get_session_pid(User, Server, Resource) ->
 
 dirty_get_sessions_list() ->
     mnesia:dirty_select(
-      session,
-      [{#session{usr = '$1', _ = '_'},
-	[],
-	['$1']}]).
+        session,
+        [{#session{usr = '$1', _ = '_'},
+          [],
+          ['$1']}]).
 
 dirty_get_my_sessions_list() ->
     mnesia:dirty_select(
-      session,
-      [{#session{sid = {'_', '$1'}, _ = '_'},
-	[{'==', {node, '$1'}, node()}],
-	['$_']}]).
+        session,
+        [{#session{sid = {'_', '$1'}, _ = '_'},
+          [{'==', {node, '$1'}, node()}],
+          ['$_']}]).
 
 get_vh_session_list(Server) ->
     LServer = jlib:nameprep(Server),
     mnesia:dirty_select(
-      session,
-      [{#session{usr = '$1', _ = '_'},
-	[{'==', {element, 2, '$1'}, LServer}],
-	['$1']}]).
+        session,
+        [{#session{usr = '$1', _ = '_'},
+          [{'==', {element, 2, '$1'}, LServer}],
+          ['$1']}]).
 
 get_vh_session_number(Server) ->
     LServer = jlib:nameprep(Server),
     Query = mnesia:dirty_select(
-		session_counter,
-		[{#session_counter{vhost = LServer, count = '$1'},
-		  [],
-		  ['$1']}]),
+        session_counter,
+        [{#session_counter{vhost = LServer, count = '$1'},
+          [],
+          ['$1']}]),
     case Query of
 	[Count] ->
 	    Count;
@@ -288,10 +288,10 @@ init([]) ->
     update_tables(),
     mnesia:create_table(session,[{ram_copies, [node()]},{attributes, record_info(fields, session)}]),
     mnesia:create_table(session_counter,[{ram_copies, [node()]}, {attributes, record_info(fields, session_counter)}]),
-	%% 2014-2-27 : ACK进程信息
-    	%% 2014-3-5 : 此逻辑转到外部模块，此处作废 
-	%% ?DEBUG("CREATE_TABLE_ACK :::> ~p",[session_ack]),
-	%% mnesia:create_table(session_ack,[{ram_copies, [node()]}, {attributes, record_info(fields, session_ack)}]),
+    %% 2014-2-27 : ACK进程信息
+    %% 2014-3-5 : 此逻辑转到外部模块，此处作废
+    %% ?DEBUG("CREATE_TABLE_ACK :::> ~p",[session_ack]),
+    %% mnesia:create_table(session_ack,[{ram_copies, [node()]}, {attributes, record_info(fields, session_ack)}]),
 	
     mnesia:add_table_index(session, usr),
     mnesia:add_table_index(session, us),
@@ -300,13 +300,13 @@ init([]) ->
     mnesia:subscribe(system),
     ets:new(sm_iqtable, [named_table]),
     lists:foreach(
-      fun(Host) ->
-	      ejabberd_hooks:add(roster_in_subscription, Host, ejabberd_sm, check_in_subscription, 20),
+        fun(Host) ->
+                ejabberd_hooks:add(roster_in_subscription, Host, ejabberd_sm, check_in_subscription, 20),
 		  
-	      ejabberd_hooks:add(offline_message_hook, Host, ejabberd_sm, bounce_offline_message, 100),
+                ejabberd_hooks:add(offline_message_hook, Host, ejabberd_sm, bounce_offline_message, 100),
 	      
-		  ejabberd_hooks:add(remove_user, Host, ejabberd_sm, disconnect_removed_user, 100)
-      end, ?MYHOSTS),
+                ejabberd_hooks:add(remove_user, Host, ejabberd_sm, disconnect_removed_user, 100)
+        end, ?MYHOSTS),
     ejabberd_commands:register_commands(commands()),
 
     {ok, #state{}}.
@@ -435,24 +435,24 @@ set_session(SID, User, Server, Resource, Priority, Info) ->
 recount_session_table(Node) ->
     F = fun() ->
 		Es = mnesia:select(
-		       session,
-		       [{#session{sid = {'_', '$1'}, _ = '_'},
-			 [{'==', {node, '$1'}, Node}],
-			 ['$_']}]),
+                    session,
+                    [{#session{sid = {'_', '$1'}, _ = '_'},
+                      [{'==', {node, '$1'}, Node}],
+                      ['$_']}]),
 		lists:foreach(fun(E) ->
 				      mnesia:delete({session, E#session.sid})
 			      end, Es),
 		%% reset session_counter table with active sessions
 		mnesia:clear_table(session_counter),
 		lists:foreach(fun(Server) ->
-				LServer = jlib:nameprep(Server),
-				Hs = mnesia:select(session,
-				    [{#session{usr = '$1', _ = '_'},
-				    [{'==', {element, 2, '$1'}, LServer}],
-				    ['$1']}]),
-				mnesia:write(
-				    #session_counter{vhost = LServer, 
-						     count = length(Hs)})
+                                      LServer = jlib:nameprep(Server),
+                                      Hs = mnesia:select(session,
+                                                         [{#session{usr = '$1', _ = '_'},
+                                                           [{'==', {element, 2, '$1'}, LServer}],
+                                                           ['$1']}]),
+                                      mnesia:write(
+                                          #session_counter{vhost = LServer,
+                                                           count = length(Hs)})
 			      end, ?MYHOSTS)
 	end,
     mnesia:async_dirty(F).
@@ -464,42 +464,117 @@ do_route(From, To, Packet) ->
     #jid{user = User, server = Server, luser = LUser, lserver = LServer, lresource = LResource} = To,
     {xmlelement, Name, Attrs, _Els} = Packet,
     case LResource of
-		"" ->
-		    case Name of
-				"message" ->
-				    route_message(From, To, Packet);
-				"iq" ->
-				    process_iq(From, To, Packet);
-				_ ->
-				    ok
-		    end;
-		_ ->
-		    USR = {LUser, LServer, LResource},
-		    case mnesia:dirty_index_read(session, USR, #session.usr) of
-			[] ->
-			    case Name of
-				"message" ->
-				    route_message(From, To, Packet);
-				"iq" ->
-				    case xml:get_attr_s("type", Attrs) of
-					"error" -> ok;
-					"result" -> ok;
-					_ ->
-					    Err =
-						jlib:make_error_reply(
-						  Packet, ?ERR_SERVICE_UNAVAILABLE),
-					    ejabberd_router:route(To, From, Err)
-				    end;
-				_ ->
-				    ?DEBUG("packet droped~n", [])
-			    end;
-			Ss ->
-			    Session = lists:max(Ss),
-			    Pid = element(2, Session#session.sid),
-			    ?DEBUG("sending to process ~p~n", [Pid]),
-			    Pid ! {route, From, To, Packet}
-		    end
+        "" ->
+            case Name of
+                "presence" ->
+                    {Pass, _Subsc} = case xml:get_attr_s("type", Attrs) of
+                                         "subscribe" ->
+                                             Reason = xml:get_path_s(
+                                                 Packet,
+                                                 [{elem, "status"}, cdata]),
+                                             {is_privacy_allow(From, To, Packet) andalso
+                                                 ejabberd_hooks:run_fold(
+                                                 roster_in_subscription,
+                                                 LServer,
+                                                 false,
+                                                 [User, Server, From, subscribe, Reason]),
+                                              true};
+                                         "subscribed" ->
+                                             {is_privacy_allow(From, To, Packet) andalso
+                                                 ejabberd_hooks:run_fold(
+                                                 roster_in_subscription,
+                                                 LServer,
+                                                 false,
+                                                 [User, Server, From, subscribed, ""]),
+                                              true};
+                                         "unsubscribe" ->
+                                             {is_privacy_allow(From, To, Packet) andalso
+                                                 ejabberd_hooks:run_fold(
+                                                 roster_in_subscription,
+                                                 LServer,
+                                                 false,
+                                                 [User, Server, From, unsubscribe, ""]),
+                                              true};
+                                         "unsubscribed" ->
+                                             {is_privacy_allow(From, To, Packet) andalso
+                                                 ejabberd_hooks:run_fold(
+                                                 roster_in_subscription,
+                                                 LServer,
+                                                 false,
+                                                 [User, Server, From, unsubscribed, ""]),
+                                              true};
+                                         _ ->
+                                             {true, false}
+                                     end,
+                    if Pass ->
+                            PResources = get_user_present_resources(LUser, LServer),
+                            lists:foreach(
+                                fun({_, R}) ->
+                                        do_route(From,jlib:jid_replace_resource(To, R),Packet)
+                                end, PResources);
+                        true ->
+                            ok
+                    end;
+                "message" ->
+                    route_message(From, To, Packet);
+                "iq" ->
+                    process_iq(From, To, Packet);
+                _ ->
+                    ok
+            end;
+        _ ->
+            USR = {LUser, LServer, LResource},
+            case mnesia:dirty_index_read(session, USR, #session.usr) of
+                [] ->
+                    case Name of
+                        "message" ->
+                            route_message(From, To, Packet);
+                        "iq" ->
+                            case xml:get_attr_s("type", Attrs) of
+                                "error" -> ok;
+                                "result" -> ok;
+                                _ ->
+                                    Err =
+                                        jlib:make_error_reply(
+                                        Packet, ?ERR_SERVICE_UNAVAILABLE),
+                                    ejabberd_router:route(To, From, Err)
+                            end;
+                        _ ->
+                            ?DEBUG("packet droped~n", [])
+                    end;
+                Ss ->
+                    Session = lists:max(Ss),
+                    Pid = element(2, Session#session.sid),
+                    ?DEBUG("sending to process ~p~n", [Pid]),
+                    Pid ! {route, From, To, Packet}
+            end
     end.
+
+
+%% The default list applies to the user as a whole,
+%% and is processed if there is no active list set
+%% for the target session/resource to which a stanza is addressed,
+%% or if there are no current sessions for the user.
+is_privacy_allow(From, To, Packet) ->
+    User = To#jid.user,
+    Server = To#jid.server,
+    PrivacyList = ejabberd_hooks:run_fold(privacy_get_user_list, Server,
+					  #userlist{}, [User, Server]),
+    is_privacy_allow(From, To, Packet, PrivacyList).
+
+%% Check if privacy rules allow this delivery
+%% Function copied from ejabberd_c2s.erl
+is_privacy_allow(From, To, Packet, PrivacyList) ->
+    User = To#jid.user,
+    Server = To#jid.server,
+    allow == ejabberd_hooks:run_fold(
+        privacy_check_packet, Server,
+        allow,
+        [User,
+         Server,
+         PrivacyList,
+         {From, To, Packet},
+         in]).
 
 
 
@@ -508,29 +583,29 @@ route_message(From, To, Packet) ->
     LServer = To#jid.lserver,
     PrioRes = get_user_present_resources(LUser, LServer),
     case catch lists:max(PrioRes) of
-		{Priority, _R} when is_integer(Priority), Priority >= 0 ->
-		    lists:foreach(
-		      fun({P, R}) when P == Priority ->
-			      LResource = jlib:resourceprep(R),
-			      USR = {LUser, LServer, LResource},
-			      case mnesia:dirty_index_read(session, USR, #session.usr) of
-					  [] ->
-					      ok; % Race condition
-					  Ss ->
-					      Session = lists:max(Ss),
-					      Pid = element(2, Session#session.sid),
-					      ?DEBUG("sending to process ~p~n", [Pid]),
-					      Pid ! {route, From, To, Packet}
-			      end;
-			 %% Ignore other priority:
-			 ({_Prio, _Res}) ->
-			      ok
-		      end,
-		      PrioRes);
-	    	%% 以下分支用来处理离线消息
-		_ ->
-			?DEBUG("user not online ~p~n", [Packet]),
-		    ok
+        {Priority, _R} when is_integer(Priority), Priority >= 0 ->
+            lists:foreach(
+                fun({P, R}) when P == Priority ->
+                        LResource = jlib:resourceprep(R),
+                        USR = {LUser, LServer, LResource},
+                        case mnesia:dirty_index_read(session, USR, #session.usr) of
+                            [] ->
+                                ok; % Race condition
+                            Ss ->
+                                Session = lists:max(Ss),
+                                Pid = element(2, Session#session.sid),
+                                ?DEBUG("sending to process ~p~n", [Pid]),
+                                Pid ! {route, From, To, Packet}
+                        end;
+                    %% Ignore other priority:
+                    ({_Prio, _Res}) ->
+                        ok
+                end,
+                            PrioRes);
+        %% 以下分支用来处理离线消息
+        _ ->
+            ?DEBUG("user not online ~p~n", [Packet]),
+            ok
     end.
 
 
@@ -562,10 +637,10 @@ clean_session_list([S1, S2 | Rest], Res) ->
 get_user_present_resources(LUser, LServer) ->
     US = {LUser, LServer},
     case catch mnesia:dirty_index_read(session, US, #session.us) of
-		{'EXIT', _Reason} ->
-		    [];
-		Ss ->
-		    [{S#session.priority, element(3, S#session.usr)} || S <- clean_session_list(Ss), is_integer(S#session.priority)]
+        {'EXIT', _Reason} ->
+            [];
+        Ss ->
+            [{S#session.priority, element(3, S#session.usr)} || S <- clean_session_list(Ss), is_integer(S#session.priority)]
     end.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -588,10 +663,10 @@ check_existing_resources(LUser, LServer, LResource) ->
 	    %% A connection exist with the same resource. We replace it:
 	    MaxSID = lists:max(SIDs),
 	    lists:foreach(
-	      fun({_, Pid} = S) when S /= MaxSID ->
-		      Pid ! replaced;
-		 (_) -> ok
-	      end, SIDs)
+                fun({_, Pid} = S) when S /= MaxSID ->
+                        Pid ! replaced;
+                    (_) -> ok
+                end, SIDs)
     end.
 
 is_existing_resource(LUser, LServer, LResource) ->
@@ -600,16 +675,16 @@ is_existing_resource(LUser, LServer, LResource) ->
 get_resource_sessions(User, Server, Resource) ->
     USR = {jlib:nodeprep(User), jlib:nameprep(Server), jlib:resourceprep(Resource)},
     mnesia:dirty_select(
-	     session,
-	     [{#session{sid = '$1', usr = USR, _ = '_'}, [], ['$1']}]).
+        session,
+        [{#session{sid = '$1', usr = USR, _ = '_'}, [], ['$1']}]).
 
 check_max_sessions(LUser, LServer) ->
     %% If the max number of sessions for a given is reached, we replace the
     %% first one
     SIDs = mnesia:dirty_select(
-	     session,
-	     [{#session{sid = '$1', us = {LUser, LServer}, _ = '_'}, [],
-	       ['$1']}]),
+        session,
+        [{#session{sid = '$1', us = {LUser, LServer}, _ = '_'}, [],
+          ['$1']}]),
     MaxSessions = get_max_user_sessions(LUser, LServer),
     if
 	length(SIDs) =< MaxSessions ->
@@ -626,7 +701,7 @@ check_max_sessions(LUser, LServer) ->
 %% Defaults to infinity
 get_max_user_sessions(LUser, Host) ->
     case acl:match_rule(
-	   Host, max_user_sessions, jlib:make_jid(LUser, Host, "")) of
+        Host, max_user_sessions, jlib:make_jid(LUser, Host, "")) of
 	Max when is_integer(Max) -> Max;
 	infinity -> infinity;
 	_ -> ?MAX_USER_SESSIONS
@@ -654,7 +729,7 @@ process_iq(From, To, Packet) ->
 					  From, To, IQ);
 		[] ->
 		    Err = jlib:make_error_reply(
-			    Packet, ?ERR_SERVICE_UNAVAILABLE),
+                        Packet, ?ERR_SERVICE_UNAVAILABLE),
 		    ejabberd_router:route(To, From, Err)
 	    end;
 	reply ->
@@ -680,26 +755,26 @@ force_update_presence({LUser, _LServer} = US) ->
 %%% ejabberd commands
 
 commands() ->
-	[
-     #ejabberd_commands{name = connected_users,
-		       tags = [session],
-		       desc = "List all established sessions",
-		       module = ?MODULE, function = connected_users,
-		       args = [],
-		       result = {connected_users, {list, {sessions, string}}}},
-     #ejabberd_commands{name = connected_users_number,
-		       tags = [session, stats],
-		       desc = "Get the number of established sessions",
-		       module = ?MODULE, function = connected_users_number,
-		       args = [],
-		       result = {num_sessions, integer}},
-     #ejabberd_commands{name = user_resources,
-		       tags = [session],
-		       desc = "List user's connected resources",
-		       module = ?MODULE, function = user_resources,
-		       args = [{user, string}, {host, string}],
-		       result = {resources, {list, {resource, string}}}}
-	].
+    [
+        #ejabberd_commands{name = connected_users,
+                           tags = [session],
+                           desc = "List all established sessions",
+                           module = ?MODULE, function = connected_users,
+                           args = [],
+                           result = {connected_users, {list, {sessions, string}}}},
+                               #ejabberd_commands{name = connected_users_number,
+                                                  tags = [session, stats],
+                                                  desc = "Get the number of established sessions",
+                                                  module = ?MODULE, function = connected_users_number,
+                                                  args = [],
+                                                  result = {num_sessions, integer}},
+                                                      #ejabberd_commands{name = user_resources,
+                                                                         tags = [session],
+                                                                         desc = "List user's connected resources",
+                                                                         module = ?MODULE, function = user_resources,
+                                                                         args = [{user, string}, {host, string}],
+                                                                         result = {resources, {list, {resource, string}}}}
+    ].
 
 connected_users() ->
     USRs = dirty_get_sessions_list(),
