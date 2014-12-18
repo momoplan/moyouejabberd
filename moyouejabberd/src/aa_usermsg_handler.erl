@@ -143,10 +143,9 @@ del_msg(Key, UserJid1) ->
 
 get_offline_msg(UserJid1) ->
 	UserJid = format_user_data(UserJid1),
-	aa_usermsg_handler:load(UserJid),
+	{TableName, ListTableName} = init_user_data(UserJid),
 	
-	[ #?MY_USER_TABLES{msg_table = TableName, msg_list_table = ListTableName}] 
-		= mnesia:dirty_read(?MY_USER_TABLES, UserJid),
+	aa_usermsg_handler:load(UserJid),
 	
 	case mnesia:dirty_read(ListTableName, UserJid) of
 		[] ->
@@ -225,9 +224,9 @@ unixtime() ->
 index_score()-> {M,S,T} = now(),  M*1000000000000+S*1000000+T.
 
 
-store_message(Key, From, To, Packet) ->
-	[Domain|_] = ?MYHOSTS, 
-	OfflineExpireDays = case ejabberd_config:get_local_option({offline_expire_days, Domain}) of
+store_message(Key, From, #jid{server = Domain}=To, Packet) ->
+	OfflineExpireDays = case ejabberd_config:get_local_option({offline_expire_days, Domain},
+                                       fun(V) -> V end) of
 							undefined ->
 								1;
 							Days ->
@@ -242,18 +241,7 @@ store_message(Key, From, To, Packet) ->
 					 timestamp = Now, 
 					 expire_time = ExpireTime,
 					 score = index_score()},
-	case mnesia:dirty_read(?MY_USER_TABLES, To) of
-		[ #?MY_USER_TABLES{msg_table = TableName, msg_list_table = ListTableName}] ->
-			skip;
-		[] ->
-			NodeNameList = atom_to_list(node()),
-			TableName = list_to_atom(NodeNameList ++ "user_message"),			
-			ListTableName = list_to_atom(NodeNameList ++ "user_msglist"),
-			TableInfo = #?MY_USER_TABLES{id = To,
-										 msg_table = TableName, 
-										 msg_list_table = ListTableName},
-			mnesia:dirty_write(?MY_USER_TABLES, TableInfo)
-	end,
+	{TableName, ListTableName} = init_user_data(To),
 	mnesia:dirty_write(TableName, Data),
 	case mnesia:dirty_read(ListTableName, To) of
 		[UserMsgList] ->
@@ -476,3 +464,55 @@ string_to_term(String) ->
 bitstring_to_term(undefined) -> undefined;
 bitstring_to_term(BitString) ->
     string_to_term(binary_to_list(BitString)).
+
+init_user_data(User) ->
+	NodeNameList = atom_to_list(node()),
+	case mnesia:dirty_read(?MY_USER_TABLES, User) of
+		[ #?MY_USER_TABLES{msg_table = TableNameOld, msg_list_table = ListTableNameOld}] ->
+			OldNameList = lists:sublist(ListTableNameOld, length(ListTableNameOld) - 12),
+			if NodeNameList == OldNameList ->
+					TableName = TableNameOld,
+					NodeNameList = ListTableNameOld;
+				true ->
+					{TableName, NodeNameList} = init_table_with_node(User),
+					transfer_data(TableNameOld, ListTableNameOld, TableName, NodeNameList, User)
+			end;
+		[] ->
+			{TableName, NodeNameList} = init_table_with_node(User)
+	end,
+	{TableName, NodeNameList}.
+
+init_table_with_node(User) ->
+	NodeNameList = atom_to_list(node()),
+	TableName = list_to_atom(NodeNameList ++ "user_message"),			
+	ListTableName = list_to_atom(NodeNameList ++ "user_msglist"),
+	TableInfo = #?MY_USER_TABLES{id = User,
+								 msg_table = TableName, 
+								 msg_list_table = ListTableName},
+	mnesia:dirty_write(?MY_USER_TABLES, TableInfo),
+	{TableName, NodeNameList}.
+
+transfer_data(TableNameOld, ListTableNameOld, TableName, NodeNameList, UserJid) ->
+	case mnesia:dirty_read(ListTableNameOld, UserJid) of
+		[] ->
+			skip;
+		[#user_msg_list{msg_list = []}] ->
+			mnesia:dirty_delete(ListTableNameOld, UserJid),
+			skip;
+		[#user_msg_list{msg_list = MsgsIds}] ->
+			%% 保证有消息，保证是倒序的
+			[begin
+				 case mnesia:dirty_read(TableNameOld, Key) of
+							[M] ->
+								mnesia:dirty_delete(TableNameOld, Key),
+								mnesia:dirty_write(TableName, M);
+							_ ->
+								skip
+				 end
+			 end || Key <- MsgsIds],
+			mnesia:dirty_write(NodeNameList, #user_msg_list{id = UserJid, msg_list = MsgsIds}),
+			mnesia:dirty_delete(ListTableNameOld, UserJid),
+			ok;
+		_ ->
+			skip
+	end.

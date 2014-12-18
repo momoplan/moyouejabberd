@@ -32,13 +32,14 @@
 	 get_so_path/0, get_bin_path/0]).
 
 start() ->
+	io:format("~nejabberd try to start ~n"),
     %%ejabberd_cover:start(),
-	application:start(emysql),
+%% 	application:start(emysql),
     application:start(ejabberd).
 
 stop() ->
-    application:stop(ejabberd),
-	application:stop(emysql).
+    application:stop(ejabberd).
+%% 	application:stop(emysql).
     %%ejabberd_cover:stop().
 
 get_so_path() ->

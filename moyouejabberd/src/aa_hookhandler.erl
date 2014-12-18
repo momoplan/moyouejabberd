@@ -29,6 +29,7 @@
 	 refresh_bak_info/0,
 	 rlcfg/0,
 	 stop/0,
+	 get_offline_msg/1,
 	 reinit_pushpids/0
 	]).
 
@@ -239,10 +240,12 @@ send_message_to_user(#jid{user=FU, server = Domain}=From, #jid{user = ToUser}=To
 		   RAttr1 = [{"msgTime",MsgTime}|RAttr0],
 		   RPacket = {Tag,E,RAttr1,Body},
 		   ?DEBUG("send message trigger store msg ~p", [SYNCID]),
-		   aa_usermsg_handler:store_msg(SYNCID, From, To, RPacket),
+		   store_message(SYNCID, From, To, RPacket),
+%% 		   aa_usermsg_handler:store_msg(SYNCID, From, To, RPacket),
 	   		user_receive_packet_handler(From,To,Packet);
 	   MT=:="msgStatus",ToUser=/="messageack" ->
 		   ?DEBUG("send message trigger del msg ~p", [SYNCID]),
+		   del_message(SYNCID, From),
 		   aa_usermsg_handler:del_msg(SYNCID, From),
 		   ack_task({ack,SYNCID});
 	   true ->
@@ -408,6 +411,7 @@ handle_info(_Info, State) ->
 
 
 terminate(_Reason, _State) ->
+	application:stop(emysql),
     ok.
 
 code_change(_OldVsn, State, _Extra) ->
@@ -583,4 +587,49 @@ local_handle_offline_message() ->
 		{offline_msg, From, To, Packet} ->
 			deal_offline_msg(From,To,Packet),
 			local_handle_offline_message()
+	end.
+
+store_message(SYNCID, From, #jid{server = Domain}=To, RPacket) ->
+	case get_data_node(Domain) of
+		none ->
+			aa_usermsg_handler:store_msg(SYNCID, From, To, RPacket);
+		Node ->
+			rpc:cast(Node, my_msg_center, store_message, [To, {SYNCID, From, RPacket}])
+	end.
+
+
+del_message(SYNCID, #jid{server = Domain}=User) ->
+	case get_data_node(Domain) of
+		none ->
+			aa_usermsg_handler:del_msg(SYNCID, User);
+		Node ->
+			rpc:cast(Node, my_msg_center, delete_message, [User, SYNCID])
+	end.
+
+get_offline_msg(#jid{server = Domain}=User) ->
+	case get_data_node(Domain) of
+		none ->
+			aa_usermsg_handler:get_offline_msg(User);
+		Node ->
+			rpc:call(Node, my_msg_center, get_offline_msg, [User])
+	end.
+
+get_data_node(Domain) ->
+	[DataNode] 
+		= case ejabberd_config:get_local_option({data_nodes, Domain}) of
+			  undefined ->
+				  [];
+			  N ->
+				  N
+		  end,
+	case DataNode of
+		[] ->
+			none;
+		[Node|_] ->
+			case net_adm:ping(Node) of
+				pong ->
+					Node;
+				_ ->
+					none
+			end
 	end.

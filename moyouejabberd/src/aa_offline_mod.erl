@@ -31,9 +31,10 @@ send_offline_msg(JID) ->
 		KEY = User++"@"++Domain++"/offline_msg",
 		?INFO_MSG("@@@ start get offline message for ~p", [KEY]),
 
-		{ok,R} = aa_usermsg_handler:get_offline_msg(JID),
+		{ok,R} = aa_hookhandler:get_offline_msg(JID),
 
 		?WARNING_MSG("@@@@ send_offline_msg :::> KEY=~p ; R.size=~p~n",[KEY,length(R)]),
+%% 		self() ! {aa_offline_msg, R};
 		lists:foreach(fun(#user_msg{from = FF, to = TT, packat = PP})->
 						 ejabberd_router:route(FF, TT, PP) 
 					  end,R) ,
