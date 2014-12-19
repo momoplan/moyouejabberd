@@ -204,17 +204,25 @@ load_mnesia_messages(MsgsIds, TableName) ->
 %% ====================================================================
 
 
-get_user_tables(UserJid) ->
+get_user_tables(#jid{server = Domain}=UserJid) ->
 	case mnesia:read(?MY_USER_TABLES, UserJid, write) of
 		[TableInfo] ->
 			TableInfo;
 		[] ->
-			NodeNameList = atom_to_list(node()),
-			RamMsgTableName = list_to_atom(NodeNameList ++ "user_message"),			
-			RamMsgListTableName = list_to_atom(NodeNameList ++ "user_msglist"),
+			case ejabberd_config:get_local_option({new_table, Domain}) of
+				[TableName, TableListName|_] when is_atom(TableName) ->
+					ok;
+				[TableNameStr, TableListNameStr|_] when is_list(TableNameStr) ->
+					TableName = list_to_atom(TableNameStr),			
+					TableListName = list_to_atom(TableListNameStr);
+				_ ->
+					NodeNameList = atom_to_list(node()),
+					TableName = list_to_atom(NodeNameList ++ "user_message"),			
+					TableListName = list_to_atom(NodeNameList ++ "user_msglist")
+			end,
 			TableInfo = #?MY_USER_TABLES{id = UserJid,
-										 msg_table = RamMsgTableName, 
-										 msg_list_table = RamMsgListTableName},
+										 msg_table = TableName, 
+										 msg_list_table = TableListName},
 			mnesia:dirty_write(?MY_USER_TABLES, TableInfo),
 			TableInfo		
 	end.
