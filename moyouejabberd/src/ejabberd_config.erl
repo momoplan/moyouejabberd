@@ -63,7 +63,7 @@ start() ->
     ok.
 
 reload_config() ->
-	Config = get_ejabberd_config_path(),
+    Config = get_ejabberd_config_path(),
     load_file(Config).
 
 %% @doc Get the filename of the ejabberd configuration file.
@@ -138,7 +138,7 @@ search_hosts(Term, State) ->
 		    add_hosts_to_option([Host], State);
 		true ->
 		    ?ERROR_MSG("Can't load config file: "
-			       "too many hosts definitions", []),
+                        "too many hosts definitions", []),
 		    exit("too many hosts definitions")
 	    end;
 	{hosts, Hosts} ->
@@ -147,7 +147,7 @@ search_hosts(Term, State) ->
 		    add_hosts_to_option(Hosts, State);
 		true ->
 		    ?ERROR_MSG("Can't load config file: "
-			       "too many hosts definitions", []),
+                        "too many hosts definitions", []),
 		    exit("too many hosts definitions")
 	    end;
 	_ ->
@@ -166,7 +166,7 @@ normalize_hosts([Host|Hosts], PrepHosts) ->
     case jlib:nodeprep(Host) of
 	error ->
 	    ?ERROR_MSG("Can't load config file: "
-		       "invalid host name [~p]", [Host]),
+                "invalid host name [~p]", [Host]),
 	    exit("invalid hostname");
 	PrepHost ->
 	    normalize_hosts(Hosts, [PrepHost|PrepHosts])
@@ -185,11 +185,11 @@ describe_config_problem(Filename, Reason) ->
 describe_config_problem(Filename, Reason, LineNumber) ->
     Text1 = lists:flatten("Problem loading ejabberd config file " ++ Filename),
     Text2 = lists:flatten(" approximately in the line "
-			  ++ file:format_error(Reason)),
+        ++ file:format_error(Reason)),
     ExitText = Text1 ++ Text2,
     Lines = get_config_lines(Filename, LineNumber, 10, 3),
     ?ERROR_MSG("The following lines from your configuration file might be"
-	       " relevant to the error: ~n~s", [Lines]),
+        " relevant to the error: ~n~s", [Lines]),
     ExitText.
 
 get_config_lines(Filename, TargetNumber, PreContext, PostContext) ->
@@ -252,17 +252,17 @@ include_config_files([Term | Terms], Res) ->
 %% @spec (Disallowed::[atom()], Terms::[term()]) -> [term()]
 delete_disallowed(Disallowed, Terms) ->
     lists:foldl(
-      fun(Dis, Ldis) ->
-	      delete_disallowed2(Dis, Ldis)
-      end,
-      Terms,
-      Disallowed).
+        fun(Dis, Ldis) ->
+                delete_disallowed2(Dis, Ldis)
+        end,
+            Terms,
+            Disallowed).
 
 delete_disallowed2(Disallowed, [H|T]) ->
     case element(1, H) of
 	Disallowed ->
 	    ?WARNING_MSG("The option '~p' is disallowed, "
-			 "and will not be accepted", [Disallowed]),
+                "and will not be accepted", [Disallowed]),
 	    delete_disallowed2(Disallowed, T);
 	_ ->
 	    [H|delete_disallowed2(Disallowed, T)]
@@ -278,12 +278,12 @@ keep_only_allowed(all, Terms) ->
     Terms;
 keep_only_allowed(Allowed, Terms) ->
     {As, NAs} = lists:partition(
-		  fun(Term) ->
-			  lists:member(element(1, Term), Allowed)
-		  end,
-		  Terms),
+        fun(Term) ->
+                lists:member(element(1, Term), Allowed)
+        end,
+            Terms),
     [?WARNING_MSG("This option is not allowed, "
-		  "and will not be accepted:~n~p", [NA])
+        "and will not be accepted:~n~p", [NA])
      || NA <- NAs],
     As.
 
@@ -303,21 +303,21 @@ replace_macros(Terms) ->
 %%       Macros = [macro()]
 split_terms_macros(Terms) ->
     lists:foldl(
-      fun(Term, {TOs, Ms}) ->
-	      case Term of
-		  {define_macro, Key, Value} -> 
-		      case is_atom(Key) and is_all_uppercase(Key) of
-			  true -> 
-			      {TOs, Ms++[{Key, Value}]};
-			  false -> 
-			      exit({macro_not_properly_defined, Term})
-		      end;
-		  Term ->
-		      {TOs ++ [Term], Ms}
-	      end
-      end,
-      {[], []},
-      Terms).
+        fun(Term, {TOs, Ms}) ->
+                case Term of
+                    {define_macro, Key, Value} ->
+                        case is_atom(Key) and is_all_uppercase(Key) of
+                            true ->
+                                {TOs, Ms++[{Key, Value}]};
+                            false ->
+                                exit({macro_not_properly_defined, Term})
+                        end;
+                    Term ->
+                        {TOs ++ [Term], Ms}
+                end
+        end,
+            {[], []},
+            Terms).
 
 %% @doc Recursively replace in Terms macro usages with the defined value.
 %% @spec (Terms, Macros) -> Terms
@@ -352,7 +352,7 @@ replace_term(Term, _) ->
 is_all_uppercase(Atom) ->
     String = erlang:atom_to_list(Atom),
     lists:all(fun(C) when C >= $a, C =< $z -> false;
-		 (_) -> true
+                  (_) -> true
 	      end, String).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -387,12 +387,12 @@ process_term(Term, State) ->
 	{listen, Listeners} ->
 	    Listeners2 =
 		lists:map(
-		  fun({PortIP, Module, Opts}) ->
-			  {Port, IPT, _, _, Proto, OptsClean} =
-			      ejabberd_listener:parse_listener_portip(PortIP, Opts),
-			  {{Port, IPT, Proto}, Module, OptsClean}
-		  end,
-		  Listeners),
+                fun({PortIP, Module, Opts}) ->
+                        {Port, IPT, _, _, Proto, OptsClean} =
+                            ejabberd_listener:parse_listener_portip(PortIP, Opts),
+                        {{Port, IPT, Proto}, Module, OptsClean}
+                end,
+                    Listeners),
 	    add_option(listen, Listeners2, State);
 	{language, Val} ->
 	    add_option(language, Val, State);
@@ -456,15 +456,15 @@ process_host_term(Term, Host, State) ->
     case Term of
 	{acl, ACLName, ACLData} ->
 	    State#state{opts =
-			[acl:to_record(Host, ACLName, ACLData) | State#state.opts]};
+                [acl:to_record(Host, ACLName, ACLData) | State#state.opts]};
 	{access, RuleName, Rules} ->
 	    State#state{opts = [#config{key = {access, RuleName, Host},
 					value = Rules} |
-				State#state.opts]};
+                                            State#state.opts]};
 	{shaper, Name, Data} ->
 	    State#state{opts = [#config{key = {shaper, Name, Host},
 					value = Data} |
-				State#state.opts]};
+                                            State#state.opts]};
 	{host, Host} ->
 	    State;
 	{hosts, _Hosts} ->
@@ -489,7 +489,7 @@ add_option(Opt, Val, State) ->
     case Table of
 	config ->
 	    State#state{opts = [#config{key = Opt, value = Val} |
-				State#state.opts]};
+                State#state.opts]};
 	local_config ->
 	    case Opt of
 		{{add, OptName}, Host} ->
@@ -497,13 +497,13 @@ add_option(Opt, Val, State) ->
 					       State#state.opts, [])};
 		_ ->
 		    State#state{opts = [#local_config{key = Opt, value = Val} |
-					State#state.opts]}
+                        State#state.opts]}
 	    end
     end.
 
 compact({OptName, Host} = Opt, Val, [], Os) ->
     ?WARNING_MSG("The option '~p' is defined for the host ~p using host_config "
-    "before the global '~p' option. This host_config option may get overwritten.", [OptName, Host, OptName]),
+        "before the global '~p' option. This host_config option may get overwritten.", [OptName, Host, OptName]),
     [#local_config{key = Opt, value = Val}] ++ Os;
 %% Traverse the list of the options already parsed
 compact(Opt, Val, [O | Os1], Os2) ->
@@ -558,12 +558,12 @@ set_opts(State) ->
 	{aborted,{no_exists,Table}} ->
 	    MnesiaDirectory = mnesia:system_info(directory),
 	    ?ERROR_MSG("Error reading Mnesia database spool files:~n"
-		       "The Mnesia database couldn't read the spool file for the table '~p'.~n"
-		       "ejabberd needs read and write access in the directory:~n   ~s~n"
-		       "Maybe the problem is a change in the computer hostname,~n"
-		       "or a change in the Erlang node name, which is currently:~n   ~p~n"
-		       "Check the ejabberd guide for details about changing the~n"
-		       "computer hostname or Erlang node name.~n",
+                "The Mnesia database couldn't read the spool file for the table '~p'.~n"
+                "ejabberd needs read and write access in the directory:~n   ~s~n"
+                "Maybe the problem is a change in the computer hostname,~n"
+                "or a change in the Erlang node name, which is currently:~n   ~p~n"
+                "Check the ejabberd guide for details about changing the~n"
+                "computer hostname or Erlang node name.~n",
 		       [Table, MnesiaDirectory, node()]),
 	    exit("Error reading Mnesia database")
     end.
@@ -632,13 +632,13 @@ replace_module(Module) -> Module.
 
 replace_modules(Modules) ->
     lists:map(
-      fun({Module, Opts}) ->
-              case replace_module(Module) of
-                  {NewModule, DBType} ->
-                      NewOpts = [{db_type, DBType} |
-                                 lists:keydelete(db_type, 1, Opts)],
-                      {NewModule, NewOpts};
-                  NewModule ->
-                      {NewModule, Opts}
-              end
-      end, Modules).
+        fun({Module, Opts}) ->
+                case replace_module(Module) of
+                    {NewModule, DBType} ->
+                        NewOpts = [{db_type, DBType} |
+                            lists:keydelete(db_type, 1, Opts)],
+                        {NewModule, NewOpts};
+                    NewModule ->
+                        {NewModule, Opts}
+                end
+        end, Modules).

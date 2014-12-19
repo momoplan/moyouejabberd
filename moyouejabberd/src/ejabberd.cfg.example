@@ -506,20 +506,20 @@
   {mod_configure,[]}, % requires mod_adhoc
   {mod_disco,    []},
   %%{mod_echo,   [{host, "echo.localhost"}]},
-  {mod_irc,      []},
+  %%{mod_irc,      []}, %%去掉mod_irc
   {mod_http_bind, []},
   %%{mod_http_fileserver, [
   %%                       {docroot, "/var/www"},
   %%                       {accesslog, "/var/log/ejabberd/access.log"}
   %%                      ]},
   {mod_last,     []},
-  {mod_muc,      [
-		  %%{host, "conference.@HOST@"},
-		  {access, muc},
-		  {access_create, muc_create},
-		  {access_persistent, muc_create},
-		  {access_admin, muc_admin}
-		 ]},
+  %%{mod_muc,      [   %%去掉mod_muc
+  %%		  %%{host, "conference.@HOST@"},
+  %%		  {access, muc},
+  %%		  {access_create, muc_create},
+  %%		  {access_persistent, muc_create},
+  %%		  {access_admin, muc_admin}
+  %%		 ]},
   %%{mod_muc_log,[]},
   {mod_ping,     []},
   %%{mod_pres_counter,[{count, 5}, {interval, 60}]},

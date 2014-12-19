@@ -9,8 +9,8 @@ LIBS =
 ZLIB_CFLAGS = 
 ZLIB_LIBS =  -lz
 
-ERLANG_CFLAGS = -I/app/erlang/lib/erlang/lib/erl_interface-3.7.14/include -I/app/erlang/lib/erlang/usr/include
-ERLANG_LIBS = -L/app/erlang/lib/erlang/lib/erl_interface-3.7.14/lib -lerl_interface -lei
+ERLANG_CFLAGS = -I/usr/lib64/erlang/lib/erl_interface-3.7.1/include -I/usr/lib64/erlang/usr/include
+ERLANG_LIBS = -L/usr/lib64/erlang/lib/erl_interface-3.7.1/lib -lerl_interface -lei
 
 # Assume Linux-style dynamic library flags
 DYNAMIC_LIB_CFLAGS = -fpic -shared
@@ -37,7 +37,7 @@ BEAMS = $(addprefix $(OUTDIR)/,$(SOURCES:.erl=.beam))
 all:    $(BEAMS) $(ERLSHLIBS)
 
 $(OUTDIR)/%.beam:       %.erl
-	/app/erlang/bin/erlc -W $(EFLAGS) -o $(OUTDIR) $<
+	/usr/bin/erlc -W $(EFLAGS) -o $(OUTDIR) $<
 
 #all:	$(ERLSHLIBS)
 #	erl -s make all report "{outdir, \"..\"}" -noinput -s erlang halt

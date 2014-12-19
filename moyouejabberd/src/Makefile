@@ -7,14 +7,14 @@ LDFLAGS =
 LIBS = 
 
 EXPAT_CFLAGS = 
-ERLANG_CFLAGS= -I/app/erlang/lib/erlang/lib/erl_interface-3.7.14/include -I/app/erlang/lib/erlang/usr/include
+ERLANG_CFLAGS= -I/usr/lib64/erlang/lib/erl_interface-3.7.1/include -I/usr/lib64/erlang/usr/include
 
 EXPAT_LIBS =  -lexpat
-ERLANG_LIBS = -L/app/erlang/lib/erlang/lib/erl_interface-3.7.14/lib -lerl_interface -lei
+ERLANG_LIBS = -L/usr/lib64/erlang/lib/erl_interface-3.7.1/lib -lerl_interface -lei
 
 ASN_FLAGS = -bber_bin +der +compact_bit_string +optimize +noobj
 
-INSTALLUSER=liangc
+INSTALLUSER=
 # if no user was enabled, don't set privileges or ownership
 ifeq ($(INSTALLUSER),)
   O_USER=
@@ -64,7 +64,7 @@ ifeq (true, false)
   EFLAGS+=-DNO_TRANSIENT_SUPERVISORS
 endif
 
-ifeq (false, true)
+ifeq (true, true)
   EFLAGS+=-DHAVE_MD2
   ERLANG_CFLAGS += -DHAVE_MD2
 endif
@@ -74,10 +74,11 @@ ifeq (, pam)
   INSTALL_EPAM=install -m 750 $(O_USER) epam $(PBINDIR)
 endif
 
-prefix = /home/liangc/ejabberd
+prefix = /
 exec_prefix = ${prefix}
 
-SUBDIRS = mod_irc mod_pubsub mod_muc mod_proxy65 eldap  web stringprep stun tls  ejabberd_zlib
+#SUBDIRS = mod_irc mod_pubsub mod_muc mod_proxy65 eldap  web stringprep stun tls  ejabberd_zlib
+SUBDIRS = mod_pubsub mod_proxy65 eldap  web stringprep stun tls  ejabberd_zlib
 ERLSHLIBS += expat_erl.so
 ERLBEHAVS = cyrsasl.erl gen_mod.erl p1_fsm.erl
 SOURCES_ALL = $(wildcard *.erl)
@@ -150,7 +151,7 @@ $(BEAMS): $(ERLBEHAVBEAMS)
 all-recursive: $(ERLBEHAVBEAMS)
 
 %.beam:       %.erl
-	/app/erlang/bin/erlc -W $(EFLAGS) $<
+	/usr/bin/erlc -W $(EFLAGS) $<
 
 
 all-recursive install-recursive uninstall-recursive \
@@ -164,8 +165,8 @@ mostlyclean-recursive maintainer-clean-recursive:
 
 
 %.hrl: %.asn1
-	/app/erlang/bin/erlc $(ASN_FLAGS) $<
-	/app/erlang/bin/erlc -W $(EFLAGS) $*.erl
+	/usr/bin/erlc $(ASN_FLAGS) $<
+	/usr/bin/erlc -W $(EFLAGS) $*.erl
 
 $(ERLSHLIBS):	%.so:	%.c
 	$(CC) $(CFLAGS) $(LDFLAGS) $(LIBS) \
@@ -187,13 +188,13 @@ install: all
 	[ -f $(ETCDIR)/ejabberd.cfg ] \
 		&& install -b -m 640 $(G_USER) ejabberd.cfg.example $(ETCDIR)/ejabberd.cfg-new \
 		|| install -b -m 640 $(G_USER) ejabberd.cfg.example $(ETCDIR)/ejabberd.cfg
-	sed -e "s*@rootdir@*/home/liangc/ejabberd*" \
-		-e "s*@installuser@*liangc*" \
+	sed -e "s*@rootdir@*/*" \
+		-e "s*@installuser@**" \
 		-e "s*@LIBDIR@*${exec_prefix}/lib*" \
 		-e "s*@SYSCONFDIR@*${prefix}/etc*" \
 		-e "s*@LOCALSTATEDIR@*${prefix}/var*" \
 		-e "s*@DOCDIR@*${datarootdir}/doc/${PACKAGE_TARNAME}*" \
-		-e "s*@erl@*/app/erlang/bin/erl*" ejabberdctl.template \
+		-e "s*@erl@*/usr/bin/erl*" ejabberdctl.template \
 		> ejabberdctl.example
 	[ -f $(ETCDIR)/ejabberdctl.cfg ] \
 		&& install -b -m 640 $(G_USER) ejabberdctl.cfg.example $(ETCDIR)/ejabberdctl.cfg-new \
@@ -245,18 +246,18 @@ install: all
 	#
 	# Spool directory
 	install -d -m 750 $(O_USER) $(SPOOLDIR)
-	$(CHOWN_COMMAND) -R liangc $(SPOOLDIR) >$(CHOWN_OUTPUT)
+	$(CHOWN_COMMAND) -R  $(SPOOLDIR) >$(CHOWN_OUTPUT)
 	chmod -R 750 $(SPOOLDIR)
-	[ ! -f $(COOKIEFILE) ] || { $(CHOWN_COMMAND) liangc $(COOKIEFILE) >$(CHOWN_OUTPUT) ; chmod 400 $(COOKIEFILE) ; }
+	[ ! -f $(COOKIEFILE) ] || { $(CHOWN_COMMAND)  $(COOKIEFILE) >$(CHOWN_OUTPUT) ; chmod 400 $(COOKIEFILE) ; }
 	#
 	# ejabberdctl lock directory
 	install -d -m 750 $(O_USER) $(CTLLOCKDIR)
-	$(CHOWN_COMMAND) -R liangc $(CTLLOCKDIR) >$(CHOWN_OUTPUT)
+	$(CHOWN_COMMAND) -R  $(CTLLOCKDIR) >$(CHOWN_OUTPUT)
 	chmod -R 750 $(CTLLOCKDIR)
 	#
 	# Log directory
 	install -d -m 750 $(O_USER) $(LOGDIR)
-	$(CHOWN_COMMAND) -R liangc $(LOGDIR) >$(CHOWN_OUTPUT)
+	$(CHOWN_COMMAND) -R  $(LOGDIR) >$(CHOWN_OUTPUT)
 	chmod -R 750 $(LOGDIR)
 	#
 	# Documentation
