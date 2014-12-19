@@ -1338,63 +1338,10 @@ print_state(State = #state{pres_t = T, pres_f = F, pres_a = A, pres_i = I}) ->
 %% Returns: any
 %%----------------------------------------------------------------------
 terminate(_Reason, StateName, StateData) ->
-    case StateName of
-	session_established ->
-	    case StateData#state.authenticated of
-		replaced ->
-		    ?INFO_MSG("(~w) Replaced session for ~s",
-			      [StateData#state.socket,
-			       jlib:jid_to_string(StateData#state.jid)]),
-		    From = StateData#state.jid,
-		    Packet = {xmlelement, "presence",
-			      [{"type", "unavailable"}],
-			      [{xmlelement, "status", [],
-				[{xmlcdata, "Replaced by new connection"}]}]},
-		    ejabberd_sm:close_session_unset_presence(
-                        StateData#state.sid,
-                        StateData#state.user,
-                        StateData#state.server,
-                        StateData#state.resource,
-                        "Replaced by new connection"),
-		    presence_broadcast(
-                        StateData, From, StateData#state.pres_a, Packet),
-		    presence_broadcast(
-                        StateData, From, StateData#state.pres_i, Packet);
-		_ ->
-		    ?INFO_MSG("(~w) Close session for ~s",
-			      [StateData#state.socket,
-			       jlib:jid_to_string(StateData#state.jid)]),
-
-		    EmptySet = ?SETS:new(),
-		    case StateData of
-			#state{pres_last = undefined,
-			       pres_a = EmptySet,
-			       pres_i = EmptySet,
-			       pres_invis = false} ->
-			    ejabberd_sm:close_session(StateData#state.sid,
+    ejabberd_sm:close_session(StateData#state.sid,
 						      StateData#state.user,
 						      StateData#state.server,
-						      StateData#state.resource);
-			_ ->
-			    From = StateData#state.jid,
-			    Packet = {xmlelement, "presence",
-				      [{"type", "unavailable"}], []},
-			    ejabberd_sm:close_session_unset_presence(
-                                StateData#state.sid,
-                                StateData#state.user,
-                                StateData#state.server,
-                                StateData#state.resource,
-                                ""),
-			    presence_broadcast(
-                                StateData, From, StateData#state.pres_a, Packet),
-			    presence_broadcast(
-                                StateData, From, StateData#state.pres_i, Packet)
-		    end
-	    end,
-	    bounce_messages();
-	_ ->
-	    ok
-    end,
+						      StateData#state.resource),
     (StateData#state.sockmod):close(StateData#state.socket),
     ok.
 
