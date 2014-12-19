@@ -26,7 +26,6 @@
 	 user_send_packet_handler/3,
 	 offline_message_hook_handler/3,
 	 send_message_to_user/3,
-	 refresh_bak_info/0,
 	 rlcfg/0,
 	 stop/0,
 	 get_offline_msg/1,
@@ -50,9 +49,6 @@ stop() ->
 
 reinit_pushpids() ->
 	gen_server:call(?MODULE, rebuild_pushpids).
-
-refresh_bak_info() ->
-	gen_server:call(?MODULE, refresh_bak).
 
 rlcfg() ->
 	gen_server:call(?MODULE, reload_config).
@@ -288,8 +284,7 @@ user_receive_packet_handler(#jid{user = FU, server=FD}=From, To, Packet) ->
 	  ecache_node,
 	  ecache_mod=ecache_server,
 	  ecache_fun=cmd,
-	  push_pids = [],
-	  bak_nodes = []
+	  push_pids = []
 }).
 
 init([]) ->
@@ -320,13 +315,6 @@ init([]) ->
 	%% init_mysql_connection
 	init_msyql_conn(),
 	{ok, State1#state{push_pids = PushPids}}.
-
-
-
-handle_call(refresh_bak, _From, State) ->
-	ejabberd_config:reload_config(),
-	State1 = refresh_mnesia_table(State),
-	{reply, ok, State1};
 
 handle_call(reload_config, _From, State) ->
 	ejabberd_config:reload_config(),
@@ -469,35 +457,27 @@ init_mnesia_tables(State) ->
 			skip
 	end,
 	
-	NodeNameList = atom_to_list(node()),
-	RamMsgTableName = list_to_atom(NodeNameList ++ "user_message"),
-	
-	%% 消息表，备份节点添加
-	MsgCopyNodes = case ejabberd_config:get_local_option({ram_msg_bak_nodes, Domain}) of
-					   undefined ->
-						   [];
-					   N ->
-						   N
-				   end,
-	mnesia:create_table(RamMsgTableName, [{record_name, user_msg},
+	case ejabberd_config:get_local_option({handle_msg_tables, Domain}) of
+		undefined ->
+			skip;
+		[] ->
+			skip;
+		MsgTables when is_list(MsgTables) ->
+			[create_or_copy_table(Table, [{record_name, user_msg},
 										  {attributes, record_info(fields,user_msg)}, 
-										  {ram_copies, [node()]},
-										  {index, [to]}]),
-%% 	mnesia:add_table_index(RamMsgTableName, to),	
-	[begin mnesia:add_table_copy(RamMsgTableName, CopyNode, ram_copies),
-		   spawn(fun() ->
-						 net_adm:ping(CopyNode)
-				 end)
-	 end || CopyNode <- MsgCopyNodes],
+										  {ram_copies, [node()]}], ram_copies) || Table <- MsgTables]
+	end,
 	
-	RamMsgListTableName = list_to_atom(NodeNameList ++ "user_msglist"),
-	
-	%% 用户消息列表
-	mnesia:create_table(RamMsgListTableName, [{record_name, user_msg_list},
+	case ejabberd_config:get_local_option({handle_msglist_tables, Domain}) of
+		undefined ->
+			skip;
+		[] ->
+			skip;
+		MsgListTables when is_list(MsgListTables) ->
+			[create_or_copy_table(Table, [{record_name, user_msg_list},
 										  {attributes, record_info(fields,user_msg_list)}, 
-										  {ram_copies, [node()]}]),
-	
-	[mnesia:add_table_copy(RamMsgListTableName, CopyNode, ram_copies)|| CopyNode <- MsgCopyNodes],
+										  {ram_copies, [node()]}], ram_copies) || Table <- MsgListTables]
+	end,
 	
 	%% 用户数据存储表
 	case ejabberd_config:get_local_option({store_user_tables_info, Domain}) of
@@ -507,7 +487,7 @@ init_mnesia_tables(State) ->
 		_ ->
 			skip
 	end,
-	State#state{bak_nodes = MsgCopyNodes}.
+	State.
 
 create_or_copy_table(TableName, Opts, Copy) ->
 	case mnesia:create_table(TableName, Opts) of
@@ -517,46 +497,7 @@ create_or_copy_table(TableName, Opts, Copy) ->
 			skip
 	end.
 
-refresh_mnesia_table(#state{bak_nodes = OldMsgCopyNodes} = State) ->
-	[Domain|_] = ?MYHOSTS,
-	NodeNameList = atom_to_list(node()),
-	RamMsgTableName = list_to_atom(NodeNameList ++ "user_message"),
-	RamMsgListTableName = list_to_atom(NodeNameList ++ "user_msglist"),
-	MsgCopyNodes = case ejabberd_config:get_local_option({ram_msg_bak_nodes, Domain}) of
-					   undefined ->
-						   [];
-					   N ->
-						   N
-				   end,
-	{AddNodes, DelNodes} = lists:foldl(fun(Node, {ANodes, DNodes}) ->
-											   case lists:member(Node, DNodes) of
-												   true ->
-													   ANodes1 = ANodes,
-													   DNodes1 = lists:delete(Node, DNodes);
-												   false ->
-													   ANodes1 = [Node|ANodes],
-													   DNodes1 = DNodes
-											   end,
-											   {ANodes1, DNodes1}
-									   end, {[], OldMsgCopyNodes}, MsgCopyNodes),
-	
-	%% 删除表复制
-	[begin mnesia:del_table_copy(RamMsgTableName, CopyNode),
-		   spawn(fun() ->
-						 net_adm:ping(CopyNode)
-				 end)
-	 end || CopyNode <- DelNodes],
-	[mnesia:del_table_copy(RamMsgListTableName, CopyNode)|| CopyNode <- DelNodes],
-	
-	%% 添加表复制
-	[begin mnesia:add_table_copy(RamMsgTableName, CopyNode, ram_copies),
-		   spawn(fun() ->
-						 net_adm:ping(CopyNode)
-				 end)
-	 end || CopyNode <- AddNodes],
-	
-	[mnesia:add_table_copy(RamMsgListTableName, CopyNode, ram_copies)|| CopyNode <- AddNodes],
-	State#state{bak_nodes = MsgCopyNodes}.
+
 
 init_msyql_conn() ->
 	[Domain|_] = ?MYHOSTS,
@@ -589,8 +530,8 @@ local_handle_offline_message() ->
 			local_handle_offline_message()
 	end.
 
-store_message(SYNCID, From, #jid{server = Domain}=To, RPacket) ->
-	case get_data_node(Domain) of
+store_message(SYNCID, From, To, RPacket) ->
+	case get_data_node(To) of
 		none ->
 			aa_usermsg_handler:store_msg(SYNCID, From, To, RPacket);
 		Node ->
@@ -614,22 +555,32 @@ get_offline_msg(#jid{server = Domain}=User) ->
 			rpc:call(Node, my_msg_center, get_offline_msg, [User])
 	end.
 
-get_data_node(Domain) ->
-	[DataNode] 
-		= case ejabberd_config:get_local_option({data_nodes, Domain}) of
-			  undefined ->
-				  [];
-			  N ->
-				  N
-		  end,
-	case DataNode of
+get_data_node(#jid{server = Domain}=User) ->
+	case mnesia:dirty_read(?MY_USER_TABLES, User) of
+		[ #?MY_USER_TABLES{msg_list_table = ListTableName}] ->
+			test_node(ListTableName);
 		[] ->
-			none;
+			case ejabberd_config:get_local_option({new_table, Domain}) of
+				undefined ->
+					node();
+				[TableName|_] when is_atom(TableName) ->
+					test_node(TableName);
+				[TableName|_] when is_list(TableName) ->
+					test_node(list_to_atom(TableName));
+				_ ->
+					node()
+			end
+	end.
+
+test_node(TableName) ->
+	case catch mnesia:table_info(TableName, where_to_write) of
 		[Node|_] ->
 			case net_adm:ping(Node) of
 				pong ->
 					Node;
 				_ ->
-					none
-			end
+					node()
+			end;
+		_ ->
+			node()
 	end.
