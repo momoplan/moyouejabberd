@@ -16,9 +16,9 @@
 
 set -o errexit
 
-DIR=/home/liangc/ejabberd/sbin
+DIR=/opt/ejabberd/sbin
 CTL="$DIR"/ejabberdctl
-USER=liangc
+USER=root
 
 test -x "$CTL" || {
 	echo "ERROR: ejabberd not found: $DIR"

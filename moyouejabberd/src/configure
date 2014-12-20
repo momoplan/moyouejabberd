@@ -646,10 +646,10 @@ make_mod_pubsub
 mod_pubsub
 make_mod_proxy65
 mod_proxy65
-make_mod_muc
-mod_muc
-make_mod_irc
-mod_irc
+make_lager
+lager
+make_goldrush
+goldrush
 LIBOBJS
 EXPAT_LIBS
 EXPAT_CFLAGS
@@ -714,8 +714,8 @@ enable_option_checking
 with_erlang
 with_libiconv_prefix
 with_expat
-enable_mod_irc
-enable_mod_muc
+enable_lager
+enable_goldrush
 enable_mod_proxy65
 enable_mod_pubsub
 enable_eldap
@@ -1362,8 +1362,8 @@ Optional Features:
   --disable-option-checking  ignore unrecognized --enable/--with options
   --disable-FEATURE       do not include FEATURE (same as --enable-FEATURE=no)
   --enable-FEATURE[=ARG]  include FEATURE [ARG=yes]
-  --enable-mod_irc        enable mod_irc (default: yes)
-  --enable-mod_muc        enable mod_muc (default: yes)
+  --enable-lager        enable lager (default: yes)
+  --enable-goldrush        enable goldrush (default: yes)
   --enable-mod_proxy65    enable mod_proxy65 (default: yes)
   --enable-mod_pubsub     enable mod_pubsub (default: yes)
   --enable-eldap          enable eldap (default: yes)
@@ -4217,47 +4217,41 @@ fi
 
 
 
-mod_irc=
-make_mod_irc=
-{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether build mod_irc" >&5
-$as_echo_n "checking whether build mod_irc... " >&6; }
-# Check whether --enable-mod_irc was given.
-if test "${enable_mod_irc+set}" = set; then :
-  enableval=$enable_mod_irc; mr_enable_mod_irc="$enableval"
+lager=
+make_lager=
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether build lager" >&5
+$as_echo_n "checking whether build lager... " >&6; }
+# Check whether --enable-lager was given.
+if test "${enable_lager+set}" = set; then :
+  enableval=$enable_lager; mr_enable_lager="$enableval"
 else
-  mr_enable_mod_irc=yes
+  mr_enable_lager=yes
 fi
 
-if test "$mr_enable_mod_irc" = "yes"; then
-mod_irc=mod_irc
-make_mod_irc=mod_irc/Makefile
+if test "$mr_enable_lager" = "yes"; then
+lager=lager
+make_lager=lager/Makefile
 fi
-{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $mr_enable_mod_irc" >&5
-$as_echo "$mr_enable_mod_irc" >&6; }
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $mr_enable_lager" >&5
+$as_echo "$mr_enable_lager" >&6; }
 
-
-
-
-
-mod_muc=
-make_mod_muc=
-{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether build mod_muc" >&5
-$as_echo_n "checking whether build mod_muc... " >&6; }
-# Check whether --enable-mod_muc was given.
-if test "${enable_mod_muc+set}" = set; then :
-  enableval=$enable_mod_muc; mr_enable_mod_muc="$enableval"
+goldrush=
+make_goldrush=
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether build goldrush" >&5
+$as_echo_n "checking whether build goldrush... " >&6; }
+# Check whether --enable-goldrush was given.
+if test "${enable_goldrush+set}" = set; then :
+  enableval=$enable_goldrush; mr_enable_goldrush="$enableval"
 else
-  mr_enable_mod_muc=yes
+  mr_enable_goldrush=yes
 fi
 
-if test "$mr_enable_mod_muc" = "yes"; then
-mod_muc=mod_muc
-make_mod_muc=mod_muc/Makefile
+if test "$mr_enable_goldrush" = "yes"; then
+goldrush=goldrush
+make_goldrush=goldrush/Makefile
 fi
-{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $mr_enable_mod_muc" >&5
-$as_echo "$mr_enable_mod_muc" >&6; }
-
-
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $mr_enable_goldrush" >&5
+$as_echo "$mr_enable_goldrush" >&6; }
 
 
 
@@ -4696,7 +4690,7 @@ fi
 
 
 
-ac_config_files="$ac_config_files Makefile $make_mod_irc $make_mod_muc $make_mod_pubsub $make_mod_proxy65 $make_eldap $make_pam $make_web stringprep/Makefile stun/Makefile $make_tls $make_odbc $make_ejabberd_zlib"
+ac_config_files="$ac_config_files Makefile $make_goldrush $make_lager $make_mod_pubsub $make_mod_proxy65 $make_eldap $make_pam $make_web stringprep/Makefile stun/Makefile $make_tls $make_odbc $make_ejabberd_zlib"
 
 #openssl
 
@@ -5854,8 +5848,8 @@ for ac_config_target in $ac_config_targets
 do
   case $ac_config_target in
     "Makefile") CONFIG_FILES="$CONFIG_FILES Makefile" ;;
-    "$make_mod_irc") CONFIG_FILES="$CONFIG_FILES $make_mod_irc" ;;
-    "$make_mod_muc") CONFIG_FILES="$CONFIG_FILES $make_mod_muc" ;;
+    "$make_lager") CONFIG_FILES="$CONFIG_FILES $make_lager" ;;
+    "$make_goldrush") CONFIG_FILES="$CONFIG_FILES $make_goldrush" ;;
     "$make_mod_pubsub") CONFIG_FILES="$CONFIG_FILES $make_mod_pubsub" ;;
     "$make_mod_proxy65") CONFIG_FILES="$CONFIG_FILES $make_mod_proxy65" ;;
     "$make_eldap") CONFIG_FILES="$CONFIG_FILES $make_eldap" ;;

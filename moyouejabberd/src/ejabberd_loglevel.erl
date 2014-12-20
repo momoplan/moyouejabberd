@@ -162,18 +162,18 @@ get_src(Loglevel) ->
 log_src(_Loglevel, #loglevel{function = no_log}) ->
     [];
 log_src({DefaultLevel, [{Module, Level} | Tail]}, Spec = #loglevel{ordinal = MinLevel})
-  when Level < MinLevel andalso MinLevel =< DefaultLevel ->
+when Level < MinLevel andalso MinLevel =< DefaultLevel ->
     [atom_to_list(Spec#loglevel.function), "(", atom_to_list(Module), ", _, _, _) -> ok;
      ", log_src({DefaultLevel, Tail}, Spec)];
 log_src({DefaultLevel, [{Module, Level} | Tail]}, Spec = #loglevel{ordinal = MinLevel})
-  when DefaultLevel < MinLevel andalso MinLevel =< Level ->
+when DefaultLevel < MinLevel andalso MinLevel =< Level ->
     [atom_to_list(Spec#loglevel.function), "(", atom_to_list(Module), " = Module, Line, Format, Args) ->",
      log_notify_src(Spec), ";
      ", log_src({DefaultLevel, Tail}, Spec)];
 log_src({DefaultLevel, [_Head | Tail]}, Spec = #loglevel{}) ->
     log_src({DefaultLevel, Tail}, Spec);
 log_src({DefaultLevel, []}, Spec = #loglevel{ordinal = MinLevel})
-  when DefaultLevel < MinLevel ->
+when DefaultLevel < MinLevel ->
     [atom_to_list(Spec#loglevel.function), "(_, _, _, _) -> ok.
      "];
 log_src({_DefaultLevel, []}, Spec = #loglevel{}) ->
@@ -187,7 +187,6 @@ log_notify_src(Spec = #loglevel{}) ->
         [self(), Module, Line | Args])"].
 
 notify_src() ->
-    %% Distribute the message to the Erlang error logger
     "notify(Type, Format, Args) ->
             LoggerMsg = {Type, group_leader(), {self(), Format, Args}},
             gen_event:notify(error_logger, LoggerMsg).
