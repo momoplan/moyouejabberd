@@ -49,7 +49,7 @@ get_offline_msg(User) ->
 	UserPidName = get_user_pid_name(User),
 	case ets:lookup(?MY_USER_MSGPID_INFO, UserPidName) of
 		[] ->
-			NewPid = gen_server:call(?MODULE, {attach_new_pid, User, UserPidName, none}),
+			{ok, NewPid} = gen_server:call(?MODULE, {attach_new_pid, User, UserPidName, none}),
 			sync_deliver_task(get_offline_msg, NewPid, UserPidName, User, User);
 		[#?MY_USER_MSGPID_INFO{pid = Pid}] ->
 			sync_deliver_task(get_offline_msg, Pid, UserPidName, User, User)
@@ -177,7 +177,7 @@ sync_deliver_task(Task, Pid, PidName, User, Args) ->
             ?ERROR_MSG("deliver task to msg handler ~p:~p, ~n call stack ~p", [ErrorType,
                                                                                ErrorReason,
                                                                                erlang:get_stacktrace()]),
-            NewPid = gen_server:call(?MODULE, {attach_new_pid, User, PidName, Pid}),
+            {ok, NewPid} = gen_server:call(?MODULE, {attach_new_pid, User, PidName, Pid}),
             sync_deliver_task(Task, NewPid, PidName, User, Args)
     end.
 
