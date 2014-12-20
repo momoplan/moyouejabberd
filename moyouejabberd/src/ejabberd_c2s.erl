@@ -814,7 +814,7 @@ wait_for_session({xmlstreamelement, El}, StateData) ->
                         pres_f = ?SETS:from_list(Fs1),
                         pres_t = ?SETS:from_list(Ts1),
                         privacy_list = PrivList},
-                    {ok,Messages}= aa_usermsg_handler:get_offline_msg(JID),
+                    {ok,Messages}= aa_hookhandler:get_offline_msg(JID),
                     lists:foreach(fun(Message)->
                                           {xmlelement, Name, Attrs, Els} = element(5,Message),
                                           From = element(3,Message),

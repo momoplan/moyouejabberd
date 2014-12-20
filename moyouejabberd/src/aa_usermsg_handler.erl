@@ -235,8 +235,7 @@ index_score()-> {M,S,T} = now(),  M*1000000000000+S*1000000+T.
 
 
 store_message(Key, From, #jid{server = Domain}=To, Packet) ->
-	OfflineExpireDays = case ejabberd_config:get_local_option({offline_expire_days, Domain},
-                                       fun(V) -> V end) of
+	OfflineExpireDays = case ejabberd_config:get_local_option({offline_expire_days, Domain}) of
 							undefined ->
 								1;
 							Days ->

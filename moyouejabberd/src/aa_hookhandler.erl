@@ -539,16 +539,16 @@ store_message(SYNCID, From, To, RPacket) ->
 	end.
 
 
-del_message(SYNCID, #jid{server = Domain}=User) ->
-	case get_data_node(Domain) of
+del_message(SYNCID, User) ->
+	case get_data_node(User) of
 		none ->
 			aa_usermsg_handler:del_msg(SYNCID, User);
 		Node ->
 			rpc:cast(Node, my_msg_center, delete_message, [User, SYNCID])
 	end.
 
-get_offline_msg(#jid{server = Domain}=User) ->
-	case get_data_node(Domain) of
+get_offline_msg(User) ->
+	case get_data_node(User) of
 		none ->
 			aa_usermsg_handler:get_offline_msg(User);
 		Node ->
@@ -556,6 +556,7 @@ get_offline_msg(#jid{server = Domain}=User) ->
 	end.
 
 get_data_node(#jid{server = Domain}=User) ->
+	FinalNode =
 	case mnesia:dirty_read(?MY_USER_TABLES, User) of
 		[ #?MY_USER_TABLES{msg_list_table = ListTableName}] ->
 			test_node(ListTableName);
@@ -570,7 +571,9 @@ get_data_node(#jid{server = Domain}=User) ->
 				_ ->
 					node()
 			end
-	end.
+	end,
+	?DEBUG("get data node final get , ~p", [FinalNode]),
+	FinalNode.
 
 test_node(TableName) ->
 	case catch mnesia:table_info(TableName, where_to_write) of

@@ -52,7 +52,7 @@ get_offline_msg(User) ->
 			NewPid = gen_server:call(?MODULE, {attach_new_pid, User, UserPidName, none}),
 			sync_deliver_task(get_offline_msg, NewPid, UserPidName, User, User);
 		[#?MY_USER_MSGPID_INFO{pid = Pid}] ->
-			deliver_task(get_offline_msg, Pid, UserPidName, User, User)
+			sync_deliver_task(get_offline_msg, Pid, UserPidName, User, User)
 	end.
 
 %% ====================================================================
@@ -103,8 +103,8 @@ handle_cast({fail_deliver, PidName, Pid, User, Task, Args}, State) ->
 	   true ->
 		   State1 = State
 	end,
-	Pid  = attach_user_to_pid(PidName, User, State1),
-	deliver_task(Task, Pid, PidName, User, Args),
+	NewPid  = attach_user_to_pid(PidName, User, State1),
+	deliver_task(Task, NewPid, PidName, User, Args),
 	{noreply, State1};
 
 handle_cast(_Msg, State) ->
@@ -139,9 +139,9 @@ clean_failed_pid(Pid, PidName, State) ->
 
 
 get_user_pid_name(#jid{user = User, server = Server}) when is_list(User),is_list(Server) ->
-	<<User,"/", Server>>;
+	list_to_binary(User ++ "/" ++ Server);
 get_user_pid_name(#jid{user = User, server = Server}) when is_binary(User), is_binary(Server) ->
-	<<User, <<"/">>/binary, Server>>.
+	<<User/binary, <<"/">>/binary, Server/binary>>.
 
 user_id_to_num(#jid{user = User}) when is_list(User) ->
 	lists:sum(User);
