@@ -32,8 +32,7 @@ AC_PREFIX_DEFAULT(/)
 AC_FUNC_MALLOC
 AC_HEADER_STDC
 
-AC_MOD_ENABLE(mod_irc, yes)
-AC_MOD_ENABLE(mod_muc, yes)
+AC_MOD_ENABLE(lager, yes)
 AC_MOD_ENABLE(mod_proxy65, yes)
 AC_MOD_ENABLE(mod_pubsub, yes)
 AC_MOD_ENABLE(eldap, yes)
@@ -104,8 +103,6 @@ esac],[nif=false])
 AC_SUBST(nif)
 
 AC_CONFIG_FILES([Makefile
-                 $make_mod_irc
-                 $make_mod_muc
                  $make_mod_pubsub
                  $make_mod_proxy65
                  $make_eldap
@@ -113,6 +110,7 @@ AC_CONFIG_FILES([Makefile
                  $make_web
                  stringprep/Makefile
                  stun/Makefile
+                 $make_lager
                  $make_tls
                  $make_odbc
                  $make_ejabberd_zlib])

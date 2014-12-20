@@ -21,8 +21,9 @@ ifeq ($(shell uname),SunOs)
     DYNAMIC_LIB_CFLAGS = -KPIC -G -z text
 endif
 
+Transform = '{parse_transform, lager_transform}'
 EFLAGS += -DSSL40
-EFLAGS += -I ..
+EFLAGS += -I .. +$(Transform)
 EFLAGS += -pz ..
 
 # make debug=true to compile Erlang module with debug informations.

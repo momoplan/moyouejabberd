@@ -9,8 +9,9 @@ LIBS =
 ERLANG_CFLAGS = -I/usr/lib64/erlang/lib/erl_interface-3.7.1/include -I/usr/lib64/erlang/usr/include
 ERLANG_LIBS = -L/usr/lib64/erlang/lib/erl_interface-3.7.1/lib -lerl_interface -lei
 
+Transform = '{parse_transform, lager_transform}'
 EFLAGS += -DSSL40
-EFLAGS += -I ..
+EFLAGS += -I .. +$(Transform)
 EFLAGS += -pz ..
 
 # make debug=true to compile Erlang module with debug informations.

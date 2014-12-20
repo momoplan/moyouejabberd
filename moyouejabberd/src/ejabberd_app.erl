@@ -39,7 +39,8 @@
 %%%
 
 start(normal, _Args) ->
-    ejabberd_loglevel:set(4),
+    lager:start(),
+    %    ejabberd_loglevel:set(4),
     write_pid_file(),
     application:start(sasl),
     randoms:start(),
@@ -104,8 +105,8 @@ init() ->
     register(ejabberd, self()),
     %erlang:system_flag(fullsweep_after, 0),
     %error_logger:logfile({open, ?LOG_PATH}),
-    LogPath = get_log_path(),
-    error_logger:add_report_handler(ejabberd_logger_h, LogPath),
+    %    LogPath = get_log_path(),
+    %    error_logger:add_report_handler(ejabberd_logger_h, LogPath),
     erl_ddll:load_driver(ejabberd:get_so_path(), tls_drv),
     case erl_ddll:load_driver(ejabberd:get_so_path(), expat_erl) of
 	ok -> ok;
@@ -134,32 +135,32 @@ db_init() ->
 %% Start all the modules in all the hosts
 start_modules() ->
     lists:foreach(
-      fun(Host) ->
-	      case ejabberd_config:get_local_option({modules, Host}) of
-		  undefined ->
-		      ok;
-		  Modules ->
-		      lists:foreach(
-			fun({Module, Args}) ->
-				gen_mod:start_module(Host, Module, Args)
-			end, Modules)
-	      end
-      end, ?MYHOSTS).
+        fun(Host) ->
+                case ejabberd_config:get_local_option({modules, Host}) of
+                    undefined ->
+                        ok;
+                    Modules ->
+                        lists:foreach(
+                            fun({Module, Args}) ->
+                                    gen_mod:start_module(Host, Module, Args)
+                            end, Modules)
+                end
+        end, ?MYHOSTS).
 
 %% Stop all the modules in all the hosts
 stop_modules() ->
     lists:foreach(
-      fun(Host) ->
-	      case ejabberd_config:get_local_option({modules, Host}) of
-		  undefined ->
-		      ok;
-		  Modules ->
-		      lists:foreach(
-			fun({Module, _Args}) ->
-				gen_mod:stop_module_keep_config(Host, Module)
-			end, Modules)
-	      end
-      end, ?MYHOSTS).
+        fun(Host) ->
+                case ejabberd_config:get_local_option({modules, Host}) of
+                    undefined ->
+                        ok;
+                    Modules ->
+                        lists:foreach(
+                            fun({Module, _Args}) ->
+                                    gen_mod:stop_module_keep_config(Host, Module)
+                            end, Modules)
+                end
+        end, ?MYHOSTS).
 
 connect_nodes() ->
     case ejabberd_config:get_local_option(cluster_nodes) of
@@ -207,9 +208,9 @@ add_windows_nameservers() ->
 broadcast_c2s_shutdown() ->
     Children = supervisor:which_children(ejabberd_c2s_sup),
     lists:foreach(
-      fun({_, C2SPid, _, _}) ->
-	      C2SPid ! system_shutdown
-      end, Children).
+        fun({_, C2SPid, _, _}) ->
+                C2SPid ! system_shutdown
+        end, Children).
 
 %%%
 %%% PID file

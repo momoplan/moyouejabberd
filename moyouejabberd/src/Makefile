@@ -30,7 +30,8 @@ else
   INIT_USER=$(INSTALLUSER)
 endif
 
-EFLAGS += -DSSL40 -pa .
+Transform = '{parse_transform, lager_transform}'
+EFLAGS += -DSSL40 -pa . +$(Transform)
 ERLANG_CFLAGS += -DSSL40
 
 # make debug=true to compile Erlang module with debug informations.
@@ -74,11 +75,11 @@ ifeq (, pam)
   INSTALL_EPAM=install -m 750 $(O_USER) epam $(PBINDIR)
 endif
 
-prefix = /
+prefix = /opt/ejabberd
 exec_prefix = ${prefix}
 
-#SUBDIRS = mod_irc mod_pubsub mod_muc mod_proxy65 eldap  web stringprep stun tls  ejabberd_zlib
-SUBDIRS = mod_pubsub mod_proxy65 eldap  web stringprep stun tls  ejabberd_zlib
+#SUBDIRS = @mod_irc@ mod_pubsub @mod_muc@ mod_proxy65 eldap  web stringprep stun tls  ejabberd_zlib
+SUBDIRS = mod_pubsub mod_proxy65 eldap  web stringprep stun tls  ejabberd_zlib goldrush
 ERLSHLIBS += expat_erl.so
 ERLBEHAVS = cyrsasl.erl gen_mod.erl p1_fsm.erl
 SOURCES_ALL = $(wildcard *.erl)
@@ -142,7 +143,11 @@ ifeq ($(shell uname),SunOs)
     DYNAMIC_LIB_CFLAGS = -KPIC -G -z text
 endif
 
-all: $(ERLSHLIBS) compile-beam all-recursive
+all: $(ERLSHLIBS) compile-lager compile-beam all-recursive
+
+compile-lager:
+	cd lager && $(MAKE) all; \
+	cd ..
 
 compile-beam: XmppAddr.hrl $(ERLBEHAVBEAMS) $(BEAMS)
 
@@ -188,7 +193,7 @@ install: all
 	[ -f $(ETCDIR)/ejabberd.cfg ] \
 		&& install -b -m 640 $(G_USER) ejabberd.cfg.example $(ETCDIR)/ejabberd.cfg-new \
 		|| install -b -m 640 $(G_USER) ejabberd.cfg.example $(ETCDIR)/ejabberd.cfg
-	sed -e "s*@rootdir@*/*" \
+	sed -e "s*@rootdir@*/opt/ejabberd*" \
 		-e "s*@installuser@**" \
 		-e "s*@LIBDIR@*${exec_prefix}/lib*" \
 		-e "s*@SYSCONFDIR@*${prefix}/etc*" \
@@ -222,14 +227,14 @@ install: all
 	install -m 644 *.hrl $(INCLUDEDIR)
 	install -d $(INCLUDEDIR)/eldap/
 	install -m 644 eldap/*.hrl $(INCLUDEDIR)/eldap/
-	install -d $(INCLUDEDIR)/mod_muc/
-	install -m 644 mod_muc/*.hrl $(INCLUDEDIR)/mod_muc/
 	install -d $(INCLUDEDIR)/mod_proxy65/
 	install -m 644 mod_proxy65/*.hrl $(INCLUDEDIR)/mod_proxy65/
 	install -d $(INCLUDEDIR)/mod_pubsub/
 	install -m 644 mod_pubsub/*.hrl $(INCLUDEDIR)/mod_pubsub/
 	install -d $(INCLUDEDIR)/web/
 	install -m 644 web/*.hrl $(INCLUDEDIR)/web/
+	install -d $(INCLUDEDIR)/lager/
+	install -m 644 lager/*.hrl $(INCLUDEDIR)/lager/
 	#
 	# Binary C programs
 	install -d $(PBINDIR)

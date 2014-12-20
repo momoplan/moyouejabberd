@@ -35,7 +35,7 @@ start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
 init([]) ->
-	Hooks =
+    Hooks =
 	{ejabberd_hooks,
 	 {ejabberd_hooks, start_link, []},
 	 permanent,
@@ -185,47 +185,47 @@ init([]) ->
 	 supervisor,
 	 [cache_tab_sup]},
 	
-	%% add by liangc 130912 : hook handler sup
-	AAHookhandlerSup ={
-			aa_hookhandler,{aa_hookhandler_sup, start_link, []},
-			permanent,
-			infinity,
-			supervisor,
-			[aa_hookhandler_sup]
-	},
-	%% add by liangc 140102 : some http interface
-	AAHTTPSup ={
-			aa_http,{aa_http_sup, start_link, []},
-			permanent,
-			infinity,
-			supervisor,
-			[aa_http_sup]
-	},
+    %% add by liangc 130912 : hook handler sup
+    %    AAHookhandlerSup ={
+    %        aa_hookhandler,{aa_hookhandler_sup, start_link, []},
+    %        permanent,
+    %        infinity,
+    %        supervisor,
+    %        [aa_hookhandler_sup]
+    %                      },
+    %    %% add by liangc 140102 : some http interface
+    %    AAHTTPSup ={
+    %        aa_http,{aa_http_sup, start_link, []},
+    %        permanent,
+    %        infinity,
+    %        supervisor,
+    %        [aa_http_sup]
+    %               },
 
     {ok, {{one_for_one, 10, 1},
 	  [
-	   Hooks,
-	   NodeGroups,
-	   SystemMonitor,
-	   Router,
-	   SM,
-	   S2S,
-	   Local,
-	   Captcha,
-	   ReceiverSupervisor,
-	   C2SSupervisor,
-	   S2SInSupervisor,
-	   S2SOutSupervisor,
-	   ServiceSupervisor,
-	   HTTPSupervisor,
-	   HTTPPollSupervisor,
-	   IQSupervisor,
-	   STUNSupervisor,
-	   FrontendSocketSupervisor,
-	   CacheTabSupervisor,
-	   Listener,
-	   AAHookhandlerSup,
-	   AAHTTPSup	
-    ]}}.
+              Hooks,
+              NodeGroups,
+              SystemMonitor,
+              Router,
+              SM,
+              S2S,
+              Local,
+              Captcha,
+              ReceiverSupervisor,
+              C2SSupervisor,
+              S2SInSupervisor,
+              S2SOutSupervisor,
+              ServiceSupervisor,
+              HTTPSupervisor,
+              HTTPPollSupervisor,
+              IQSupervisor,
+              STUNSupervisor,
+              FrontendSocketSupervisor,
+              CacheTabSupervisor,
+              Listener
+%              AAHookhandlerSup,
+%              AAHTTPSup
+          ]}}.
 
 

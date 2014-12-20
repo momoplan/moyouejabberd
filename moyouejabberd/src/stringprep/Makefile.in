@@ -19,7 +19,8 @@ ifeq ($(shell uname),SunOs)
 endif
 
 
-EFLAGS += -I ..
+Transform = '{parse_transform, lager_transform}'
+EFLAGS += -I .. +$(Transform)
 EFLAGS += -pz ..
 
 # make debug=true to compile Erlang module with debug informations.

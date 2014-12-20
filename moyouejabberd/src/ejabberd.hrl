@@ -45,20 +45,40 @@
 
 %% Print in standard output
 -define(PRINT(Format, Args),
-    io:format(Format, Args)).
+        io:format(Format, Args)).
 
 -define(DEBUG(Format, Args),
-    ejabberd_logger:debug_msg(?MODULE,?LINE,Format, Args)).
+        gen_event:notify(lager_event, {log, lager_msg:new(io_lib:format(Format, Args),
+                                                          debug,
+                                                          [{pid,self()},{line,?LINE},{file,?FILE},{module,?MODULE}],
+                                                          [])}
+                        )).
 
 -define(INFO_MSG(Format, Args),
-    ejabberd_logger:info_msg(?MODULE,?LINE,Format, Args)).
+        gen_event:notify(lager_event, {log, lager_msg:new(io_lib:format(Format, Args),
+                                                          info,
+                                                          [{pid,self()},{line,?LINE},{file,?FILE},{module,?MODULE}],
+                                                          [])}
+                        )).
 			      
 -define(WARNING_MSG(Format, Args),
-    ejabberd_logger:warning_msg(?MODULE,?LINE,Format, Args)).
+        gen_event:notify(lager_event, {log, lager_msg:new(io_lib:format(Format, Args),
+                                                          warning,
+                                                          [{pid,self()},{line,?LINE},{file,?FILE},{module,?MODULE}],
+                                                          [])}
+                        )).
 			      
 -define(ERROR_MSG(Format, Args),
-    ejabberd_logger:error_msg(?MODULE,?LINE,Format, Args)).
+        gen_event:notify(lager_event, {log, lager_msg:new(io_lib:format(Format, Args),
+                                                          error,
+                                                          [{pid,self()},{line,?LINE},{file,?FILE},{module,?MODULE}],
+                                                          [])}
+                        )).
 
 -define(CRITICAL_MSG(Format, Args),
-    ejabberd_logger:critical_msg(?MODULE,?LINE,Format, Args)).
+        gen_event:notify(lager_event, {log, lager_msg:new(io_lib:format(Format, Args),
+                                                          critical,
+                                                          [{pid,self()},{line,?LINE},{file,?FILE},{module,?MODULE}],
+                                                          [])}
+                        )).
 
