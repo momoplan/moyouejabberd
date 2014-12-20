@@ -11,7 +11,7 @@
 
 -define(PUSH_PID_NUM, 128).
 
--define(DBCONNNUM, 100).
+-define(DBCONNNUM, 70).
 
 -define(ETS_ACK_TASK, ets_ack_task).
 
