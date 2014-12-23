@@ -29,18 +29,18 @@
             ]},
 
             %% Whether to write a crash log, and where. Undefined means no crash logger.
-            {crash_log, "/opt/ejabberd/var/log/ejabberd/crash.log"},
+            {crash_log, "/opt/ejabberd/runtime/var/log/ejabberd/crash.log"},
             %% Maximum size in bytes of events in the crash log - defaults to 65536
             {crash_log_msg_size, 65536},
             %% Maximum size of the crash log in bytes, before its rotated, set
             %% to 0 to disable rotation - default is 0
-            {crash_log_size, 10485760},
+            {crash_log_size, 104857600},
             %% What time to rotate the crash log - default is no time
             %% rotation. See the README for a description of this format.
             {crash_log_date, "$D0"},
             %% Number of rotated crash logs to keep, 0 means keep only the
             %% current one - default is 0
-            {crash_log_count, 5},
+            {crash_log_count, 20},
             %% Whether to redirect error_logger messages into lager - defaults to true
             {error_logger_redirect, true},
             %% How many messages per second to allow from error_logger before we start dropping them
@@ -52,8 +52,7 @@
             {async_threshold_window, 5},
 
             {handlers, [
-             {lager_console_backend, info},
-             {lager_file_backend, [{file, "/opt/ejabberd/var/log/ejabberd/error.log"},   {level, error}, {size, 10485760}, {date, "$D0"}, {count, 5}]},
-             {lager_file_backend, [{file, "/opt/ejabberd/var/log/ejabberd/console.log"}, {level, info}, {size, 10485760}, {date, "$D0"}, {count, 5}]}]}
+             {lager_file_backend, [{dir, "/opt/ejabberd/runtime/var/log/ejabberd/"}, {base_name, "error"},  {level, error}, {size, 0}, {date, "$D0"}, {count, 5}]},
+             {lager_file_backend, [{dir, "/opt/ejabberd/runtime/var/log/ejabberd/"}, {base_name, "console"}, {level, info}, {size, 0}, {date, "$D0"}, {count, 5}]}]}
         ]}
  ]}.

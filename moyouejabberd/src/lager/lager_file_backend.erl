@@ -41,9 +41,12 @@
 -endif.
 
 -export([init/1, handle_call/2, handle_event/2, handle_info/2, terminate/2,
-        code_change/3]).
+         code_change/3]).
 
 -export([config_to_id/1]).
+
+-export([open_new/1]).
+
 
 -define(DEFAULT_LOG_LEVEL, info).
 -define(DEFAULT_ROTATION_SIZE, 10485760). %% 10mb
@@ -55,22 +58,24 @@
 -define(DEFAULT_CHECK_INTERVAL, 1000).
 
 -record(state, {
-        name :: string(),
-        level :: {'mask', integer()},
-        fd :: file:io_device(),
-        inode :: integer(),
-        flap=false :: boolean(),
-        size = 0 :: integer(),
-        date :: undefined | string(),
-        count = 10 :: integer(),
-        formatter :: atom(),
-        formatter_config :: any(),
-        sync_on :: {'mask', integer()},
-        check_interval = ?DEFAULT_CHECK_INTERVAL :: non_neg_integer(),
-        sync_interval = ?DEFAULT_SYNC_INTERVAL :: non_neg_integer(),
-        sync_size = ?DEFAULT_SYNC_SIZE :: non_neg_integer(),
-        last_check = os:timestamp() :: erlang:timestamp()
-    }).
+    name :: string(),
+    dir :: string(),
+    base_name :: string(),
+    level :: {'mask', integer()},
+    fd :: file:io_device(),
+    inode :: integer(),
+    flap=false :: boolean(),
+    size = 0 :: integer(),
+    date :: undefined | string(),
+    count = 10 :: integer(),
+    formatter :: atom(),
+    formatter_config :: any(),
+    sync_on :: {'mask', integer()},
+    check_interval = ?DEFAULT_CHECK_INTERVAL :: non_neg_integer(),
+    sync_interval = ?DEFAULT_SYNC_INTERVAL :: non_neg_integer(),
+    sync_size = ?DEFAULT_SYNC_SIZE :: non_neg_integer(),
+    last_check = os:timestamp() :: erlang:timestamp()
+               }).
 
 -type option() :: {file, string()} | {level, lager:log_level()} |
                   {size, non_neg_integer()} | {date, string()} |
@@ -102,24 +107,28 @@ init(LogFileConfig) when is_list(LogFileConfig) ->
             {error, {fatal, bad_config}};
         Config ->
             %% probabably a better way to do this, but whatever
-            [Name, Level, Date, Size, Count, SyncInterval, SyncSize, SyncOn, CheckInterval, Formatter, FormatterConfig] =
-              [proplists:get_value(Key, Config) || Key <- [file, level, date, size, count, sync_interval, sync_size, sync_on, check_interval, formatter, formatter_config]],
-            schedule_rotation(Name, Date),
-            State0 = #state{name=Name, level=Level, size=Size, date=Date, count=Count, formatter=Formatter,
-                formatter_config=FormatterConfig, sync_on=SyncOn, sync_interval=SyncInterval, sync_size=SyncSize,
-                check_interval=CheckInterval},
+            [Dir, BaseName, Level, Date, Size, Count, SyncInterval, SyncSize, SyncOn, CheckInterval, Formatter, FormatterConfig] =
+                [proplists:get_value(Key, Config) || Key <- [dir, base_name, level, date, size, count, sync_interval, sync_size, sync_on, check_interval, formatter, formatter_config]],
+            Stamp = today(),
+            LogFile = BaseName ++ Stamp ++ ".log",
+            Name = filename:join([Dir, LogFile]),
+            timer:start(),
+            timer:apply_interval(1000, ?MODULE, open_new, [BaseName]),
+            State0 = #state{name=Name, dir=Dir, base_name=BaseName, level=Level, size=Size, date=Date, count=Count, formatter=Formatter,
+                            formatter_config=FormatterConfig, sync_on=SyncOn, sync_interval=SyncInterval, sync_size=SyncSize,
+                            check_interval=CheckInterval},
             State = case lager_util:open_logfile(Name, {SyncSize, SyncInterval}) of
-                {ok, {FD, Inode, _}} ->
-                    State0#state{fd=FD, inode=Inode};
-                {error, Reason} ->
-                    ?INT_LOG(error, "Failed to open log file ~s with error ~s", [Name, file:format_error(Reason)]),
-                    State0#state{flap=true}
-            end,
+                        {ok, {FD, Inode, _}} ->
+                            State0#state{fd=FD, inode=Inode};
+                        {error, Reason} ->
+                            ?INT_LOG(error, "Failed to open log file ~s with error ~s", [Name, file:format_error(Reason)]),
+                            State0#state{flap=true}
+                    end,
             {ok, State}
     end.
 
 %% @private
-handle_call({set_loglevel, Level}, #state{name=Ident} = State) ->
+handle_call({set_loglevel, Level}, #state{base_name=Ident} = State) ->
     case validate_loglevel(Level) of
         false ->
             {ok, {error, bad_loglevel}, State};
@@ -129,12 +138,27 @@ handle_call({set_loglevel, Level}, #state{name=Ident} = State) ->
     end;
 handle_call(get_loglevel, #state{level=Level} = State) ->
     {ok, Level, State};
+handle_call(new, #state{base_name=BaseName, dir=Dir, fd=FD, sync_interval=SyncInterval, sync_size=SyncSize} = State) ->
+    file:datasync(FD),
+    file:close(FD),
+    file:close(FD),
+    Stamp = today(),
+    LogFile = BaseName ++ Stamp ++ ".log",
+    Name = filename:join([Dir, LogFile]),
+    State1 = case lager_util:open_logfile(Name, {SyncSize, SyncInterval}) of
+                 {ok, {FD1, Inode, _}} ->
+                     State#state{fd=FD1, inode=Inode, name=Name};
+                 {error, Reason} ->
+                     ?INT_LOG(error, "Failed to open log file ~s with error ~s", [Name, file:format_error(Reason)]),
+                     State#state{flap=true}
+             end,
+    {ok, ok, State1};
 handle_call(_Request, State) ->
     {ok, ok, State}.
 
 %% @private
 handle_event({log, Message},
-    #state{name=Name, level=L,formatter=Formatter,formatter_config=FormatConfig} = State) ->
+             #state{base_name=Name, level=L,formatter=Formatter,formatter_config=FormatConfig} = State) ->
     case lager_util:is_loggable(Message,L,{lager_file_backend, Name}) of
         true ->
             {ok,write(State, lager_msg:timestamp(Message), lager_msg:severity_as_int(Message), Formatter:format(Message,FormatConfig)) };
@@ -144,11 +168,7 @@ handle_event({log, Message},
 handle_event(_Event, State) ->
     {ok, State}.
 
-%% @private
-handle_info({rotate, File}, #state{name=File,count=Count,date=Date} = State) ->
-    _ = lager_util:rotate_logfile(File, Count),
-    schedule_rotation(File, Date),
-    {ok, State};
+
 handle_info(_Info, State) ->
     {ok, State}.
 
@@ -173,16 +193,16 @@ config_to_id([{Name,_Severity,_Size,_Rotation,_Count}, _Format]) ->
 config_to_id([{Name,_Severity}, _Format]) when is_list(Name) ->
     {?MODULE, Name};
 config_to_id(Config) ->
-    case proplists:get_value(file, Config) of
+    case proplists:get_value(base_name, Config) of
         undefined ->
             erlang:error(no_file);
-        File ->
-            {?MODULE, File}
+        BaseName ->
+            {?MODULE, BaseName}
     end.
 
 
 write(#state{name=Name, fd=FD, inode=Inode, flap=Flap, size=RotSize,
-        count=Count} = State, Timestamp, Level, Msg) ->
+             count=Count} = State, Timestamp, Level, Msg) ->
     LastCheck = timer:now_diff(Timestamp, State#state.last_check) div 1000,
     case LastCheck >= State#state.check_interval orelse FD == undefined of
         true ->
@@ -252,33 +272,34 @@ validate_loglevel(Level) ->
 validate_logfile_proplist(List) ->
     try validate_logfile_proplist(List, []) of
         Res ->
-            case proplists:get_value(file, Res) of
+            case proplists:get_value(dir, Res) of
                 undefined ->
                     ?INT_LOG(error, "Missing required file option", []),
                     false;
-                _File ->
+                _Dir ->
                     %% merge with the default options
                     {ok, DefaultRotationDate} = lager_util:parse_rotation_date_spec(?DEFAULT_ROTATION_DATE),
                     lists:keymerge(1, lists:sort(Res), lists:sort([
-                            {level, validate_loglevel(?DEFAULT_LOG_LEVEL)}, {date, DefaultRotationDate},
-                            {size, ?DEFAULT_ROTATION_SIZE}, {count, ?DEFAULT_ROTATION_COUNT},
-                            {sync_on, validate_loglevel(?DEFAULT_SYNC_LEVEL)}, {sync_interval, ?DEFAULT_SYNC_INTERVAL},
-                            {sync_size, ?DEFAULT_SYNC_SIZE}, {check_interval, ?DEFAULT_CHECK_INTERVAL},
-                            {formatter, lager_default_formatter}, {formatter_config, []}
-                        ]))
+                        {level, validate_loglevel(?DEFAULT_LOG_LEVEL)}, {date, DefaultRotationDate},
+                        {size, ?DEFAULT_ROTATION_SIZE}, {count, ?DEFAULT_ROTATION_COUNT},
+                        {sync_on, validate_loglevel(?DEFAULT_SYNC_LEVEL)}, {sync_interval, ?DEFAULT_SYNC_INTERVAL},
+                        {sync_size, ?DEFAULT_SYNC_SIZE}, {check_interval, ?DEFAULT_CHECK_INTERVAL},
+                        {formatter, lager_default_formatter}, {formatter_config, []}
+                                                                  ]))
             end
     catch
         {bad_config, Msg, Value} ->
             ?INT_LOG(error, "~s ~p for file ~p",
-                [Msg, Value, proplists:get_value(file, List)]),
+                     [Msg, Value, proplists:get_value(file, List)]),
             false
     end.
 
 validate_logfile_proplist([], Acc) ->
     Acc;
-validate_logfile_proplist([{file, File}|Tail], Acc) ->
-    %% is there any reasonable validation we can do here?
-    validate_logfile_proplist(Tail, [{file, File}|Acc]);
+validate_logfile_proplist([{base_name, BaseName}|Tail], Acc) ->
+    validate_logfile_proplist(Tail, [{base_name, BaseName}|Acc]);
+validate_logfile_proplist([{dir, Dir}|Tail], Acc) ->
+    validate_logfile_proplist(Tail, [{dir, Dir}|Acc]);
 validate_logfile_proplist([{level, Level}|Tail], Acc) ->
     case validate_loglevel(Level) of
         false ->
@@ -357,11 +378,25 @@ validate_logfile_proplist([{formatter_config, FmtCfg}|Tail], Acc) ->
 validate_logfile_proplist([Other|_Tail], _Acc) ->
     throw({bad_config, "Invalid option", Other}).
 
-schedule_rotation(_, undefined) ->
-    ok;
-schedule_rotation(Name, Date) ->
-    erlang:send_after(lager_util:calculate_next_rotation(Date) * 1000, self(), {rotate, Name}),
-    ok.
+today() ->
+    {Date, _} = erlang:localtime(),
+    DateS = lists:concat(lists:map(fun(X) ->
+                                           if length(X) == 1 -> string:concat("0", X);
+                                               true -> X
+                                           end
+                                   end, [integer_to_list(X) || X <- tuple_to_list(Date)])),
+    DateS.
+
+open_new(Name) ->
+    {_, Time} = erlang:localtime(),
+    %%io:format("now:~p~n",[Time]),
+    case Time of
+        {0, 0, 0} ->
+            gen_event:call(lager_event, {?MODULE, Name}, new, infinity);
+        _ ->
+            go_on
+    end.
+
 
 -ifdef(TEST).
 

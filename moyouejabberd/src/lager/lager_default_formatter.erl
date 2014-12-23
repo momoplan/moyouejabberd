@@ -29,6 +29,15 @@
 %%
 -export([format/2, format/3]).
 
+
+-record(lager_msg,{
+    destinations,
+    metadata,
+    severity,
+    datetime,
+    timestamp,
+    message
+                  }).
 %%
 %% API Functions
 %%
@@ -74,7 +83,19 @@ format(Message,Config,Colors) ->
 
 -spec format(lager_msg:lager_msg(),list()) -> any().
 format(Msg, Config) ->
-    format(Msg, Config, []).
+    Msg1 = case Msg#lager_msg.message of
+               {Format, Args} ->
+                   Args1 = lists:foldl(fun(X, Acc) when is_tuple(X) andalso is_atom(element(1, X)) andalso element(1, X) /= socket_state ->
+                                               X1 = re:replace(lists:flatten(io_lib:format("~p", [X])), "\\n|\\r\\n| ", "", [{return, list}, global]),
+                                               [X1 | Acc];
+                                           (X, Acc) ->
+                                               [X | Acc]
+                                       end, [], Args),
+                   Msg#lager_msg{message=io_lib:format(Format, lists:reverse(Args1))};
+               _ ->
+                   Msg
+           end,
+    format(Msg1, Config, []).
 
 -spec output(term(),lager_msg:lager_msg()) -> iolist().
 output(message,Msg) -> lager_msg:message(Msg);

@@ -48,35 +48,35 @@
         io:format(Format, Args)).
 
 -define(DEBUG(Format, Args),
-        gen_event:notify(lager_event, {log, lager_msg:new(io_lib:format(Format, Args),
+        gen_event:notify(lager_event, {log, lager_msg:new({Format, Args},
                                                           debug,
                                                           [{pid,self()},{line,?LINE},{file,?FILE},{module,?MODULE}],
                                                           [])}
                         )).
 
 -define(INFO_MSG(Format, Args),
-        gen_event:notify(lager_event, {log, lager_msg:new(io_lib:format(Format, Args),
+        gen_event:notify(lager_event, {log, lager_msg:new({Format, Args},
                                                           info,
                                                           [{pid,self()},{line,?LINE},{file,?FILE},{module,?MODULE}],
                                                           [])}
                         )).
 			      
 -define(WARNING_MSG(Format, Args),
-        gen_event:notify(lager_event, {log, lager_msg:new(io_lib:format(Format, Args),
+        gen_event:notify(lager_event, {log, lager_msg:new({Format, Args},
                                                           warning,
                                                           [{pid,self()},{line,?LINE},{file,?FILE},{module,?MODULE}],
                                                           [])}
                         )).
 			      
 -define(ERROR_MSG(Format, Args),
-        gen_event:notify(lager_event, {log, lager_msg:new(io_lib:format(Format, Args),
+        gen_event:notify(lager_event, {log, lager_msg:new({Format, Args},
                                                           error,
                                                           [{pid,self()},{line,?LINE},{file,?FILE},{module,?MODULE}],
                                                           [])}
                         )).
 
 -define(CRITICAL_MSG(Format, Args),
-        gen_event:notify(lager_event, {log, lager_msg:new(io_lib:format(Format, Args),
+        gen_event:notify(lager_event, {log, lager_msg:new({Format, Args},
                                                           critical,
                                                           [{pid,self()},{line,?LINE},{file,?FILE},{module,?MODULE}],
                                                           [])}
