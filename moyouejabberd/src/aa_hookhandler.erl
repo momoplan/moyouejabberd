@@ -39,8 +39,7 @@ stop() ->
 	lists:foreach(
 	  fun(Host) ->
 			  ejabberd_hooks:delete(user_send_packet,Host,?MODULE, user_send_packet_handler ,80),
-			  ejabberd_hooks:delete(offline_message_hook, Host, ?MODULE, offline_message_hook_handler, 45),
-			  ejabberd_hooks:delete(user_receive_packet, Host, ?MODULE, user_receive_packet_handler, 45)
+			  ejabberd_hooks:delete(offline_message_hook, Host, ?MODULE, offline_message_hook_handler, 45)
 
 	  end, ?MYHOSTS),
     exit(whereis(?MODULE), stop),
@@ -256,7 +255,6 @@ user_receive_packet_handler(#jid{user = FU, server=FD}=From, To, Packet) ->
 	   true ->
 		   case E of 
 			   "message" ->
-				   ?INFO_MSG("user ~p receive message from ~p content ~p", [To, From, Packet]),
 				   {_,"message",Attr,_} = Packet,
 				   D = dict:from_list(Attr),
 				   MT = case dict:is_key("msgtype",D) of true-> dict:fetch("msgtype",D); _-> "" end,
@@ -294,9 +292,7 @@ init([]) ->
 			  ?INFO_MSG("#### _begin Host=~p~n",[Host]),
 			  ejabberd_hooks:add(user_send_packet,Host,?MODULE, user_send_packet_handler ,80),
 			  ejabberd_hooks:add(offline_message_hook, Host, ?MODULE, offline_message_hook_handler, 45),
-			  ?INFO_MSG("#### offline_message_hook Host=~p~n",[Host]),
-%%			  ejabberd_hooks:add(user_receive_packet, Host, ?MODULE, user_receive_packet_handler, 45),
-			  ?INFO_MSG("#### user_receive_packet Host=~p~n",[Host])
+			  ?INFO_MSG("#### offline_message_hook Host=~p~n",[Host])
 
 	  end, ?MYHOSTS),
 	%% 2014-3-4 : 在这个 HOOK 初始化时，启动一个thrift 客户端，同步数据到缓存服务器
