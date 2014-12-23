@@ -182,10 +182,9 @@ send_offline_message(From ,To ,Packet,MID,MsgType,3) ->
 	?ERROR_MSG("[ERROR] offline_message_hook_handler_lost ~p",[{From ,To ,Packet,MID,MsgType,3}]),
 	ok.
 
-user_send_packet_handler(#jid{server=Domain}=From, To, Packet) ->
-	?INFO_MSG("user ~p send packet ~p content ~p", [To, From, Packet]),
+user_send_packet_handler(#jid{user=User,server=Domain}=From, #jid{user=ToUser,server=ToDomain}=To, Packet) ->
+	?INFO_MSG("user ~p@~p to ~p@~p content ~p", [User,Domain,ToUser,ToDomain, Packet]),
 	try
-		%% From={jid,"cc","test.com","Smack","cc","test.com","Smack"}
 		[_,E|_] = tuple_to_list(Packet),
 		case E of 
 			"message" ->
