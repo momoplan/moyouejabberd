@@ -61,7 +61,7 @@ dump(Jid) ->
 			?ERROR_MSG("Problem dumping player ~p message to db, Reason:~p", [Jid#jid.user,Reason])
 	end,
 	{T2, _} = erlang:statistics(wall_clock),
-	?ERROR_MSG("dump cost time ~p", [T2 - T1]).
+	?DEBUG("dump cost time ~p", [T2 - T1]).
 
 load(Jid) ->
 	UserJid = format_user_data(Jid),
