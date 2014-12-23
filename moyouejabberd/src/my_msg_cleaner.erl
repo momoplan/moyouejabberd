@@ -131,11 +131,24 @@ code_change(_OldVsn, State, _Extra) ->
 %% ====================================================================
 
 clean_message() ->
-	NodeNameList = atom_to_list(node()),
-	RamMsgListTableName = list_to_atom(NodeNameList ++ "user_msglist"),	
-	UserJids = mnesia:dirty_all_keys(RamMsgListTableName),
-	clean_user_msg(UserJids),
-	ok.
+	[Domain|_] = ?MYHOSTS,
+	SelfNode = node(),	
+	case ejabberd_config:get_local_option({handle_msglist_tables, Domain}) of
+		undefined ->
+			skip;
+		[] ->
+			skip;
+		MsgListTables when is_list(MsgListTables) ->
+			[begin
+				 case catch mnesia:table_info(Table, where_to_write) of
+					 [SelfNode|_] ->
+						 UserJids = mnesia:dirty_all_keys(Table),
+						 clean_user_msg(UserJids);
+					 _ ->
+						 skip
+				 end
+			 end || Table <- MsgListTables]
+	end.
 
 clean_user_msg([]) ->
 	ok;
