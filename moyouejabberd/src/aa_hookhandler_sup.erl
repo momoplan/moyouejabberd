@@ -19,13 +19,12 @@ start_user_msg_handler() ->
 
 init([]) ->
 	AAHookhandler ={ aa_hookhandler,{aa_hookhandler, start_link, []}, permanent, brutal_kill, worker, [aa_hookhandler] },
-	AAOfflineMod ={ aa_offline_mod,{aa_offline_mod, start_link, []}, permanent, brutal_kill, worker, [aa_offline_mod] },
 	AAGroupChatSup ={ aa_group_chat_sup,{aa_group_chat_sup, start_link, []}, temporary, brutal_kill, supervisor, [aa_group_chat_sup] },
 	AAUserMsgPisSup ={my_usermsg_pid_sup, {my_usermsg_pid_sup, start_link, []},  permanent,infinity, supervisor, [my_usermsg_pid_sup]},
 	AAMsgStastic ={aa_msg_statistic, {aa_msg_statistic, start_link, []}, permanent, 3000, worker, [aa_msg_statistic]},
 	AAMsgCleaner ={my_msg_cleaner, {my_msg_cleaner, start_link, []}, permanent, 3000, worker, [my_msg_cleaner]},
 	MYMsgCenter ={my_msg_center, {my_msg_center, start_link, []}, permanent, 3000, worker, [my_msg_center]},
-	{ok, {{one_for_one, 5, 10}, [AAHookhandler,AAOfflineMod,AAGroupChatSup, AAUserMsgPisSup, AAMsgStastic, AAMsgCleaner,MYMsgCenter]}}.
+	{ok, {{one_for_one, 5, 10}, [AAHookhandler,AAGroupChatSup, AAUserMsgPisSup, AAMsgStastic, AAMsgCleaner,MYMsgCenter]}}.
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
