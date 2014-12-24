@@ -140,7 +140,6 @@ init_msyql_and_create_connection() ->
             ok;
         Configs ->
             lists:foreach(fun({ID, Config}) ->
-                                  io:format("Configs : ~p~n", [Configs]),
                                   User = proplists:get_value(user, Config),
                                   Pwd = proplists:get_value(password, Config),
                                   Host = proplists:get_value(host, Config),

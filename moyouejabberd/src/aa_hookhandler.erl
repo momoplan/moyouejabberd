@@ -305,8 +305,6 @@ init([]) ->
     PushPids = [spawn(fun() ->
                               local_handle_offline_message()
                       end) || _ <- lists:duplicate(?PUSH_PID_NUM, 1)],
-    %% init_mysql_connection
-    %    init_msyql_conn(),
     {ok, State1#state{push_pids = PushPids}}.
 
 handle_call(reload_config, _From, State) ->
@@ -392,7 +390,6 @@ handle_info(_Info, State) ->
 
 
 terminate(_Reason, _State) ->
-	application:stop(emysql),
     ok.
 
 code_change(_OldVsn, State, _Extra) ->

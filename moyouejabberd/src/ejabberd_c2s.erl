@@ -814,17 +814,7 @@ wait_for_session({xmlstreamelement, El}, StateData) ->
                         pres_f = ?SETS:from_list(Fs1),
                         pres_t = ?SETS:from_list(Ts1),
                         privacy_list = PrivList},
-                    {ok,Messages}= aa_hookhandler:get_offline_msg(JID),
-                    lists:foreach(fun(Message)->
-                                          {xmlelement, Name, Attrs, Els} = element(5,Message),
-                                          From = element(3,Message),
-                                          To = element(4,Message),
-                                          Attrs1 = jlib:replace_from_to_attrs(jlib:jid_to_string(From),
-                                                                              jlib:jid_to_string(To),
-                                                                              Attrs),
-                                          FixedPacket = {xmlelement, Name, Attrs1, Els},
-                                          send_element(StateData,  FixedPacket)
-                                  end,Messages) ,
+                    send_offline_msg(JID, NewStateData),
 		    fsm_next_state_pack(session_established,
                                         NewStateData);
 		_ ->
@@ -2188,4 +2178,25 @@ pack_string(String, Pack) ->
             {PackedString, Pack};
         none ->
             {String, gb_trees:insert(String, String, Pack)}
+    end.
+
+send_offline_msg(JID, StateData) ->
+    {ok, Messages}= aa_hookhandler:get_offline_msg(JID),
+    send_offline_msg(JID, StateData, Messages).
+
+send_offline_msg(_JID, _StateData, []) ->
+    go;
+send_offline_msg(JID, StateData, [Message | T]) ->
+    {xmlelement, Name, Attrs, Els} = element(5,Message),
+    From = element(3,Message),
+    To = element(4,Message),
+    Attrs1 = jlib:replace_from_to_attrs(jlib:jid_to_string(From),
+                                        jlib:jid_to_string(To),
+                                        Attrs),
+    FixedPacket = {xmlelement, Name, Attrs1, Els},
+    case catch send_element(StateData,  FixedPacket) of
+        {'EXIT', Reason} ->
+            ?INFO_MSG("Jid : ~p send offline msg with exit reason : ~p~n", [JID, Reason]);
+        _ ->
+            send_offline_msg(JID, StateData, T)
     end.
