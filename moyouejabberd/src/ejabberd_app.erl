@@ -58,6 +58,7 @@ start(normal, _Args) ->
     ejabberd_config:start(),
     ejabberd_check:config(),
     connect_nodes(),
+    init_msyql_and_create_connection(),
     %% Loading ASN.1 driver explicitly to avoid races in LDAP
     catch asn1rt:load_driver(),
     Sup = ejabberd_sup:start_link(),
@@ -131,6 +132,26 @@ db_init() ->
     end,
     application:start(mnesia, permanent),
     mnesia:wait_for_tables(mnesia:system_info(local_tables), infinity).
+
+init_msyql_and_create_connection() ->
+    application:start(emysql),
+    case ejabberd_config:get_local_option(mysql_config) of
+        undefined ->
+            ok;
+        Configs ->
+            lists:foreach(fun({ID, Config}) ->
+                                  io:format("Configs : ~p~n", [Configs]),
+                                  User = proplists:get_value(user, Config),
+                                  Pwd = proplists:get_value(password, Config),
+                                  Host = proplists:get_value(host, Config),
+                                  Encode = proplists:get_value(encode, Config),
+                                  Port = proplists:get_value(port, Config),
+                                  PoolSize = proplists:get_value(poolsize, Config),
+                                  DataBase = proplists:get_value(database, Config),
+                                  emysql:add_pool(ID, PoolSize, User, Pwd, Host, Port, DataBase, Encode)
+                          end, Configs)
+    end.
+
 
 %% Start all the modules in all the hosts
 start_modules() ->

@@ -424,6 +424,8 @@ process_term(Term, State) ->
 	    add_option(node_type, NodeType, State);
 	{cluster_nodes, Nodes} ->
 	    add_option(cluster_nodes, Nodes, State);
+        {mysql_config, MySqlConf} ->
+	    add_option(mysql_config, MySqlConf, State);
 	{domain_balancing, Domain, Balancing} ->
 	    add_option({domain_balancing, Domain}, Balancing, State);
 	{domain_balancing_component_number, Domain, N} ->

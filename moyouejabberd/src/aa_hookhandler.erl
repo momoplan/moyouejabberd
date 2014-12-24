@@ -11,8 +11,6 @@
 
 -define(PUSH_PID_NUM, 128).
 
--define(DBCONNNUM, 70).
-
 -define(ETS_ACK_TASK, ets_ack_task).
 
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3,get_id/0]).
@@ -304,12 +302,12 @@ init([]) ->
 	%% 初始化mnesia表
 	State1 = init_mnesia_tables(State),
 	
-	PushPids = [spawn(fun() ->
-							  local_handle_offline_message()
-					  end) || _ <- lists:duplicate(?PUSH_PID_NUM, 1)],
-	%% init_mysql_connection
-	init_msyql_conn(),
-	{ok, State1#state{push_pids = PushPids}}.
+    PushPids = [spawn(fun() ->
+                              local_handle_offline_message()
+                      end) || _ <- lists:duplicate(?PUSH_PID_NUM, 1)],
+    %% init_mysql_connection
+    %    init_msyql_conn(),
+    {ok, State1#state{push_pids = PushPids}}.
 
 handle_call(reload_config, _From, State) ->
 	ejabberd_config:reload_config(),
@@ -490,25 +488,6 @@ create_or_copy_table(TableName, Opts, Copy) ->
 			mnesia:add_table_copy(TableName, node(), Copy);
 		_ ->
 			skip
-	end.
-
-
-
-init_msyql_conn() ->
-	[Domain|_] = ?MYHOSTS,
-	case ejabberd_config:get_local_option({mysql_config, Domain}) of
-		undefined ->
-			throw(no_mysql_connection);
-		DBCfg ->
-%% 			?ERROR_MSG("dbcfg ~p", [DBCfg]),
-			{_, User} = lists:keyfind(user, 1, DBCfg),
-			{_, Password} = lists:keyfind(password, 1, DBCfg),
-			{_, Host} = lists:keyfind(host, 1, DBCfg),
-			{_, DB} = lists:keyfind(db, 1, DBCfg),
-			{_, Encode} = lists:keyfind(encode, 1, DBCfg),
-			{_, Port} = lists:keyfind(port, 1, DBCfg),
-			application:start(emysql),
-			emysql:add_pool(?DB, ?DBCONNNUM, User, Password, Host, Port, DB, Encode)
 	end.
 
 random_pushpid(Pids) ->
