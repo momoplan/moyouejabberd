@@ -158,7 +158,7 @@ clean_user_msg([Jid|RestUser]) ->
 		online ->
 			skip;
 		offline ->
-			aa_usermsg_handler:dump(Jid)
+			my_msg_center:dump(Jid)
 	end,
 	clean_user_msg(RestUser).
 	

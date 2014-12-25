@@ -24,3 +24,5 @@ mnesia/*
 erlide.log.1
 
 *.log.*
+moyouejabberd/.settings/org.eclipse.core.resources.prefs
+*.prefs

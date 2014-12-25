@@ -19,7 +19,8 @@
          add_pool/1,
          store_message/2,
          delete_message/2,
-         get_offline_msg/1]).
+         get_offline_msg/1,
+		 dump/1]).
 
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
@@ -55,6 +56,15 @@ get_offline_msg(User) ->
 			sync_deliver_task(get_offline_msg, Pid, UserPidName, User, User)
 	end.
 
+dump(User) ->
+	UserPidName = get_user_pid_name(User),
+    case ets:lookup(?MY_USER_MSGPID_INFO, UserPidName) of
+        [] ->
+            gen_server:cast(?MODULE, {fail_deliver, UserPidName, none, User, dump, User});
+        [#?MY_USER_MSGPID_INFO{pid = Pid}] ->
+            deliver_task(dump, Pid, UserPidName, User, User)
+    end.
+
 %% ====================================================================
 %% Behavioural functions 
 %% ====================================================================
@@ -64,7 +74,7 @@ get_offline_msg(User) ->
 init([]) ->
     ets:new(?MY_USER_MSGPID_INFO, [{keypos, #?MY_USER_MSGPID_INFO.user}, named_table, public, set]),
     Pids = [begin
-                {ok, Pid} = my_user_msg_handler:start_link(),
+                {ok, Pid} = my_user_msg_handler:start(),
                 Pid
             end || _ <- lists:duplicate(?USER_MSD_PID_COUNT, 1)],
     {ok, #state{user_msd_handlers = Pids}}.
@@ -72,7 +82,7 @@ init([]) ->
 
 handle_call({add_pool, Num}, _From, State) ->
     Pids = [begin
-                {ok, Pid} = my_user_msg_handler:start_link(),
+                {ok, Pid} = my_user_msg_handler:start(),
                 Pid
             end || _ <- lists:duplicate(Num, 1)],
     OrgPids = State#state.user_msd_handlers,
@@ -133,7 +143,7 @@ code_change(_OldVsn, State, _Extra) ->
 clean_failed_pid(Pid, PidName, State) ->
     ClearedPidList = lists:delete(Pid, State#state.user_msd_handlers),
     ets:delete(?MY_USER_MSGPID_INFO, PidName),
-    {ok, NewPid} = my_user_msg_handler:start_link(),
+    {ok, NewPid} = my_user_msg_handler:start(),
     NewPidList = ClearedPidList ++ [NewPid],
     State#state{user_msd_handlers = NewPidList}.
 
@@ -188,4 +198,7 @@ deliver(del_msg, Pid, {Key, User}) ->
     my_user_msg_handler:delete_msg(Pid, Key, User);
 
 deliver(get_offline_msg, Pid, User) ->
-    my_user_msg_handler:get_offline_msg(Pid, User).
+    my_user_msg_handler:get_offline_msg(Pid, User);
+
+deliver(dump, Pid, User) ->
+    my_user_msg_handler:dump(Pid, User).

@@ -9,13 +9,17 @@
 %% ====================================================================
 %% API functions
 %% ====================================================================
--export([start_link/0,
+-export([start/0,
 		 store_msg/3,
 		 delete_msg/3,
-		 get_offline_msg/2]).
+		 get_offline_msg/2,
+		 dump/2]).
 
-start_link() ->
-	gen_server:start_link(?MODULE, [], []).
+%% start_link() ->
+%% 	gen_server:start_link(?MODULE, [], []).
+
+start() ->
+	gen_server:start(?MODULE, [], []).
 
 store_msg(Pid, User, Message) ->
 	gen_server:cast(Pid, {store_msg, User, Message}).
@@ -25,6 +29,9 @@ delete_msg(Pid, Key, User) ->
 
 get_offline_msg(Pid, User) ->
 	gen_server:call(Pid, {get_offline_msg, User}).
+
+dump(Pid, User) ->
+	gen_server:cast(Pid, {dump, User}).
 
 
 %% ====================================================================
@@ -51,6 +58,10 @@ handle_cast({store_msg, User, {Key, From, Packet}}, State) ->
 
 handle_cast({del_msg, Key, User}, State) ->
 	aa_usermsg_handler:del_msg(Key, User),
+	{noreply, State};
+
+handle_cast( {dump, User}, State) ->
+	aa_usermsg_handler:dump(User),
 	{noreply, State};
 
 handle_cast(_Msg, State) ->

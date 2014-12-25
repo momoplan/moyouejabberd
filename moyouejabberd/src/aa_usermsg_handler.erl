@@ -25,40 +25,31 @@
 		load/1]).
 
 dump(Jid) ->
-	ValidJid = format_user_data(Jid),
-	F = fun() ->
-				case mnesia:read(?MY_USER_TABLES, ValidJid, write) of
-					[#?MY_USER_TABLES{msg_table = TableName, msg_list_table = RamMsgListTableName}] ->
-						case mnesia:dirty_read(RamMsgListTableName, ValidJid) of
-							[#user_msg_list{msg_list = KeysList}] ->					
-								mnesia:dirty_delete(RamMsgListTableName, ValidJid),
-								AvaliabelMsgList
-									= lists:filtermap(fun(-1) ->
-														   false;
-													  (Key) ->
-														   case mnesia:dirty_read(TableName, Key) of
-															   [Msg] ->
-																   {true, Msg};
-															   _ ->
-																   false
-														   end 
-												   end, KeysList),
-								[mnesia:dirty_delete({TableName, Key}) || Key <- KeysList],
-								write_messages_to_sql(Jid, AvaliabelMsgList, TableName);
-							_ ->
-								skip
-						end;	
-					_ ->
-						skip
-				end
-		end,
 	{T1, _} = erlang:statistics(wall_clock),
-%% 	mnesia:transaction(F),
-	case mnesia:transaction(F) of
-		{atomic, Result} ->
-			?INFO_MSG("dump player ~p message to db correctly: ~p", [Jid#jid.user, Result]);
-		{aborted, Reason} ->
-			?ERROR_MSG("Problem dumping player ~p message to db, Reason:~p", [Jid#jid.user,Reason])
+	ValidJid = format_user_data(Jid),
+	case mnesia:dirty_read(?MY_USER_TABLES, ValidJid) of
+		[#?MY_USER_TABLES{msg_table = TableName, msg_list_table = RamMsgListTableName}] ->
+			case mnesia:dirty_read(RamMsgListTableName, ValidJid) of
+				[#user_msg_list{msg_list = KeysList}] ->					
+					mnesia:dirty_delete(RamMsgListTableName, ValidJid),
+					AvaliabelMsgList
+						= lists:filtermap(fun(-1) ->
+												  false;
+											 (Key) ->
+												  case mnesia:dirty_read(TableName, Key) of
+													  [Msg] ->
+														  {true, Msg};
+													  _ ->
+														  false
+												  end 
+										  end, KeysList),
+					write_messages_to_sql(Jid, AvaliabelMsgList, TableName),
+					[mnesia:dirty_delete({TableName, Key}) || Key <- KeysList];
+				_ ->
+					skip
+			end;	
+		_ ->
+			skip
 	end,
 	{T2, _} = erlang:statistics(wall_clock),
 	?DEBUG("dump cost time ~p", [T2 - T1]).
