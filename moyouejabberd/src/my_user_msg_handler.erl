@@ -10,29 +10,35 @@
 %% API functions
 %% ====================================================================
 -export([start/0,
-		 store_msg/3,
-		 delete_msg/3,
-		 get_offline_msg/2,
-		 dump/2]).
+         store_msg/3,
+         delete_msg/3,
+         get_offline_msg/2,
+         dump/2]).
+
+
+-export([test/1]).
 
 %% start_link() ->
 %% 	gen_server:start_link(?MODULE, [], []).
 
 start() ->
-	gen_server:start(?MODULE, [], []).
+    gen_server:start(?MODULE, [], []).
 
 store_msg(Pid, User, Message) ->
-	gen_server:cast(Pid, {store_msg, User, Message}).
+    gen_server:cast(Pid, {store_msg, User, Message}).
 
 delete_msg(Pid, Key, User) ->
-	gen_server:cast(Pid, {del_msg, Key, User}).
+    gen_server:cast(Pid, {del_msg, Key, User}).
 
 get_offline_msg(Pid, User) ->
-	gen_server:call(Pid, {get_offline_msg, User}).
+    gen_server:call(Pid, {get_offline_msg, User}, infinity).
 
 dump(Pid, User) ->
-	gen_server:cast(Pid, {dump, User}).
+    gen_server:cast(Pid, {dump, User}).
 
+
+test(Pid) ->
+    gen_server:cast(Pid, {test}).
 
 %% ====================================================================
 %% Behavioural functions 
@@ -45,7 +51,7 @@ init([]) ->
 
 
 handle_call({get_offline_msg, User}, _From, State) ->
-	{reply, aa_usermsg_handler:get_offline_msg(User), State};
+    {reply, aa_usermsg_handler:get_offline_msg(User), State};
 
 handle_call(_Request, _From, State) ->
     Reply = ok,
@@ -53,16 +59,20 @@ handle_call(_Request, _From, State) ->
 
 
 handle_cast({store_msg, User, {Key, From, Packet}}, State) ->
-	aa_usermsg_handler:store_msg(Key, From, User, Packet),
-	{noreply, State};
+    aa_usermsg_handler:store_msg(Key, From, User, Packet),
+    {noreply, State};
 
 handle_cast({del_msg, Key, User}, State) ->
-	aa_usermsg_handler:del_msg(Key, User),
-	{noreply, State};
+    aa_usermsg_handler:del_msg(Key, User),
+    {noreply, State};
 
 handle_cast( {dump, User}, State) ->
-	aa_usermsg_handler:dump(User),
-	{noreply, State};
+    aa_usermsg_handler:dump(User),
+    {noreply, State};
+
+handle_cast( {test}, State) ->
+    exit(mysql_timeout),
+    {noreply, State};
 
 handle_cast(_Msg, State) ->
     {noreply, State}.

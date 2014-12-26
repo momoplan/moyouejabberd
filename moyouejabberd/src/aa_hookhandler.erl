@@ -519,12 +519,18 @@ del_message(SYNCID, User) ->
 	end.
 
 get_offline_msg(User) ->
-	case get_data_node(User) of
-		none ->
-			aa_usermsg_handler:get_offline_msg(User);
-		Node ->
-			rpc:call(Node, my_msg_center, get_offline_msg, [User])
-	end.
+    case get_data_node(User) of
+        none ->
+            aa_usermsg_handler:get_offline_msg(User);
+        Node ->
+            case rpc:call(Node, my_msg_center, get_offline_msg, [User]) of
+                {badrpc, Reason} ->
+                    ?ERROR_MSG("get_offline_msg failed, Node : ~p, User : ~p, Reason : ~p~n",[Node, User, Reason]),
+                    {ok, []};
+                Result ->
+                    Result
+            end
+    end.
 
 get_data_node(#jid{server = Domain}=User) ->
 	FinalNode =

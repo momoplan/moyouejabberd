@@ -25,34 +25,33 @@
 		load/1]).
 
 dump(Jid) ->
-	{T1, _} = erlang:statistics(wall_clock),
-	ValidJid = format_user_data(Jid),
-	case mnesia:dirty_read(?MY_USER_TABLES, ValidJid) of
-		[#?MY_USER_TABLES{msg_table = TableName, msg_list_table = RamMsgListTableName}] ->
-			case mnesia:dirty_read(RamMsgListTableName, ValidJid) of
-				[#user_msg_list{msg_list = KeysList}] ->					
-					mnesia:dirty_delete(RamMsgListTableName, ValidJid),
-					AvaliabelMsgList
-						= lists:filtermap(fun(-1) ->
-												  false;
-											 (Key) ->
-												  case mnesia:dirty_read(TableName, Key) of
-													  [Msg] ->
-														  {true, Msg};
-													  _ ->
-														  false
-												  end 
-										  end, KeysList),
-					write_messages_to_sql(Jid, AvaliabelMsgList, TableName),
-					[mnesia:dirty_delete({TableName, Key}) || Key <- KeysList];
-				_ ->
-					skip
-			end;	
-		_ ->
-			skip
-	end,
-	{T2, _} = erlang:statistics(wall_clock),
-	?DEBUG("dump cost time ~p", [T2 - T1]).
+    ?INFO_MSG("aa user msg rcv dump msg call ~p", [Jid]),
+    ValidJid = format_user_data(Jid),
+    case mnesia:dirty_read(?MY_USER_TABLES, ValidJid) of
+        [#?MY_USER_TABLES{msg_table = TableName, msg_list_table = RamMsgListTableName}] ->
+            case mnesia:dirty_read(RamMsgListTableName, ValidJid) of
+                [#user_msg_list{msg_list = KeysList}] ->
+                    mnesia:dirty_delete(RamMsgListTableName, ValidJid),
+                    AvaliabelMsgList
+                        = lists:filtermap(fun(-1) ->
+                                                  false;
+                                              (Key) ->
+                                                  case mnesia:dirty_read(TableName, Key) of
+                                                      [Msg] ->
+                                                          {true, Msg};
+                                                      _ ->
+                                                          false
+                                                  end
+                                          end, KeysList),
+                    write_messages_to_sql(Jid, AvaliabelMsgList, TableName),
+                    [mnesia:dirty_delete({TableName, Key}) || Key <- KeysList];
+                _ ->
+                    skip
+            end;
+        _ ->
+            skip
+    end,
+    ?INFO_MSG("dump msg finish ~p", [Jid]).
 
 load(Jid) ->
 	UserJid = format_user_data(Jid),
@@ -121,37 +120,37 @@ start_link(_Jid) ->
 	
 
 store_msg(Key, From, To, Packet) ->
-	?INFO_MSG("aa user msg rcv store msg call ~p", [{Key, From, To}]),	
-	store_message(Key, format_user_data(From), format_user_data(To), Packet),
-	aa_msg_statistic:add(),
-	?INFO_MSG("store msg finish ~p", [Key]).
+    store_message(Key, format_user_data(From), format_user_data(To), Packet),
+    aa_msg_statistic:add().
 
 del_msg(Key, UserJid1) ->
-	?INFO_MSG("aa user msg rcv del msg call ~p", [Key]),
-	delete_message(Key,format_user_data(UserJid1)),
-	aa_msg_statistic:del(),
-	?INFO_MSG("del msg finish ~p", [Key]).
+    ?INFO_MSG("aa user msg rcv del msg call ~p", [Key]),
+    delete_message(Key,format_user_data(UserJid1)),
+    aa_msg_statistic:del(),
+    ?INFO_MSG("del msg finish ~p", [Key]).
 
 get_offline_msg(UserJid1) ->
-	UserJid = format_user_data(UserJid1),
+    ?INFO_MSG("aa user msg rcv get offline msg call ~p", [UserJid1]),
+    UserJid = format_user_data(UserJid1),
 	
-	aa_usermsg_handler:load(UserJid),
+    aa_usermsg_handler:load(UserJid),
 
-	[ #?MY_USER_TABLES{msg_table = TableName, msg_list_table = ListTableName}] 
-		= mnesia:dirty_read(?MY_USER_TABLES, UserJid),
+    [ #?MY_USER_TABLES{msg_table = TableName, msg_list_table = ListTableName}]
+    = mnesia:dirty_read(?MY_USER_TABLES, UserJid),
 	
-	case mnesia:dirty_read(ListTableName, UserJid) of
-		[] ->
-			{ok, []};
-		[#user_msg_list{msg_list = []}] ->
-			{ok, []};
-		[#user_msg_list{msg_list = MsgsIds}] ->
-			%% 保证有消息，保证是倒序的
-			Msgs = load_mnesia_messages(MsgsIds, TableName),						
-			{ok, Msgs};
-		_ ->
-			{ok, []}
-	end.
+    Msgs = case mnesia:dirty_read(ListTableName, UserJid) of
+               [] ->
+                   [];
+               [#user_msg_list{msg_list = []}] ->
+                   [];
+               [#user_msg_list{msg_list = MsgsIds}] ->
+                   %% 保证有消息，保证是倒序的
+                   load_mnesia_messages(MsgsIds, TableName);
+               _ ->
+                   []
+           end,
+    ?INFO_MSG("get offline msg finish ~p", [UserJid1]),
+    {ok, Msgs}.
 %% 	UserJid = format_user_data(UserJid1),
 %% 	F = fun() ->
 %% 				#?MY_USER_TABLES{msg_table = T1, msg_list_table = T2} =
