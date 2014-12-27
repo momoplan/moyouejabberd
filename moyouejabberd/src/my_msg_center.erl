@@ -29,7 +29,6 @@ start_link() ->
 add_pool(Num) ->
     gen_server:call(?MODULE, {add_pool, Num}).
 
-
 list() ->
     gen_server:call(?MODULE, {list}).
 

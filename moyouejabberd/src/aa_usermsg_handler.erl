@@ -124,33 +124,35 @@ store_msg(Key, From, To, Packet) ->
     aa_msg_statistic:add().
 
 del_msg(Key, UserJid1) ->
-    ?INFO_MSG("aa user msg rcv del msg call ~p", [Key]),
     delete_message(Key,format_user_data(UserJid1)),
-    aa_msg_statistic:del(),
-    ?INFO_MSG("del msg finish ~p", [Key]).
+    aa_msg_statistic:del().
 
 get_offline_msg(UserJid1) ->
-    ?INFO_MSG("aa user msg rcv get offline msg call ~p", [UserJid1]),
     UserJid = format_user_data(UserJid1),
-	
-    aa_usermsg_handler:load(UserJid),
+    try
+        aa_usermsg_handler:load(UserJid),
+        [ #?MY_USER_TABLES{msg_table = TableName, msg_list_table = ListTableName}]
+        = mnesia:dirty_read(?MY_USER_TABLES, UserJid),
 
-    [ #?MY_USER_TABLES{msg_table = TableName, msg_list_table = ListTableName}]
-    = mnesia:dirty_read(?MY_USER_TABLES, UserJid),
-	
-    Msgs = case mnesia:dirty_read(ListTableName, UserJid) of
-               [] ->
-                   [];
-               [#user_msg_list{msg_list = []}] ->
-                   [];
-               [#user_msg_list{msg_list = MsgsIds}] ->
-                   %% 保证有消息，保证是倒序的
-                   load_mnesia_messages(MsgsIds, TableName);
-               _ ->
-                   []
-           end,
-    ?INFO_MSG("get offline msg finish ~p", [UserJid1]),
-    {ok, Msgs}.
+        Msgs = case mnesia:dirty_read(ListTableName, UserJid) of
+                   [] ->
+                       [];
+                   [#user_msg_list{msg_list = []}] ->
+                       [];
+                   [#user_msg_list{msg_list = MsgsIds}] ->
+                       %% 保证有消息，保证是倒序的
+                       load_mnesia_messages(MsgsIds, TableName);
+                   _ ->
+                       []
+               end,
+        {ok, Msgs}
+    catch
+        ErrorType:ErrorReason ->
+            ?ERROR_MSG("get_offline_msg failed, User : ~p, ErrorType : ~p, ErrorReason~n",[UserJid1, ErrorType, ErrorReason]),
+            {ok, []}
+    end.
+
+    
 %% 	UserJid = format_user_data(UserJid1),
 %% 	F = fun() ->
 %% 				#?MY_USER_TABLES{msg_table = T1, msg_list_table = T2} =
