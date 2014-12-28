@@ -85,13 +85,7 @@ format(Message,Config,Colors) ->
 format(Msg, Config) ->
     Msg1 = case Msg#lager_msg.message of
                {Format, Args} ->
-                   Args1 = lists:foldl(fun(X, Acc) when is_tuple(X) andalso is_atom(element(1, X)) andalso element(1, X) /= socket_state ->
-                                               X1 = re:replace(lists:flatten(io_lib:format("~p", [X])), "\\n|\\r\\n| ", "", [{return, list}, global]),
-                                               [X1 | Acc];
-                                           (X, Acc) ->
-                                               [X | Acc]
-                                       end, [], Args),
-                   Msg#lager_msg{message=io_lib:format(Format, lists:reverse(Args1))};
+                   Msg#lager_msg{message=io_lib:format(Format, Args)};
                _ ->
                    Msg
            end,

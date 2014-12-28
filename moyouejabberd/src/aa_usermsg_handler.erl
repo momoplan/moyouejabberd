@@ -54,19 +54,10 @@ dump(Jid) ->
     ?INFO_MSG("dump msg finish ~p", [Jid]).
 
 load(Jid) ->
-	UserJid = format_user_data(Jid),
-	F = fun() ->
-				#?MY_USER_TABLES{msg_table = T1, msg_list_table = T2} =
-					 get_user_tables(UserJid),
-				{T1, T2}
-		end,
-	case mnesia:transaction(F) of
-		{aborted, Reason} ->
-			?ERROR_MSG("get offline for user ~p, Reason:~p", [UserJid, Reason]),
-			{ok, []};
-		{atomic, {TableName, RamMsgListTableName}} ->
-			load_message_from_mysql(UserJid, TableName, RamMsgListTableName)
-	end.
+    UserJid = format_user_data(Jid),
+    UserTable = get_user_tables(UserJid),
+    load_message_from_mysql(UserJid, UserTable#?MY_USER_TABLES.msg_table, UserTable#?MY_USER_TABLES.msg_list_table),
+    UserTable.
 
 %% 	F = fun() ->
 %% 				UserJid = format_user_data(Jid),
@@ -130,25 +121,22 @@ del_msg(Key, UserJid1) ->
 get_offline_msg(UserJid1) ->
     UserJid = format_user_data(UserJid1),
     try
-        aa_usermsg_handler:load(UserJid),
-        [ #?MY_USER_TABLES{msg_table = TableName, msg_list_table = ListTableName}]
-        = mnesia:dirty_read(?MY_USER_TABLES, UserJid),
-
-        Msgs = case mnesia:dirty_read(ListTableName, UserJid) of
+        UserTable = load(UserJid),
+        Msgs = case mnesia:dirty_read(UserTable#?MY_USER_TABLES.msg_list_table, UserJid) of
                    [] ->
                        [];
                    [#user_msg_list{msg_list = []}] ->
                        [];
                    [#user_msg_list{msg_list = MsgsIds}] ->
                        %% 保证有消息，保证是倒序的
-                       load_mnesia_messages(MsgsIds, TableName);
+                       load_mnesia_messages(MsgsIds, UserTable#?MY_USER_TABLES.msg_table);
                    _ ->
                        []
                end,
         {ok, Msgs}
     catch
         ErrorType:ErrorReason ->
-            ?ERROR_MSG("get_offline_msg failed, User : ~p, ErrorType : ~p, ErrorReason~n",[UserJid1, ErrorType, ErrorReason]),
+            ?ERROR_MSG("get_offline_msg failed, User : ~p, ErrorType : ~p, ErrorReason~p~n",[UserJid1, ErrorType, ErrorReason]),
             {ok, []}
     end.
 

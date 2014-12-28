@@ -81,9 +81,8 @@ get_text_message_form_packet_result( Body )->
 %% 离线消息处理器
 %% 钩子回调
 offline_message_hook_handler(From, To, Packet) ->
-	?INFO_MSG("offline_message_hook_handler trigger offline msg push", []),
-	gen_server:cast(?MODULE, {deal_offline_msg, From, To, Packet}),
-	stop.
+    gen_server:cast(?MODULE, {deal_offline_msg, From, To, Packet}),
+    stop.
 
 deal_offline_msg(From, To, Packet) ->
 	try
@@ -112,83 +111,81 @@ deal_offline_msg(From, To, Packet) ->
 send_offline_message(From ,To ,Packet,MID,MsgType )->
 	send_offline_message(From,To,Packet,MID,MsgType,0).	
 send_offline_message(From ,To ,Packet,MID,MsgType,N) when N < 3 ->
-	{jid,FromUser,Domain,_,_,_,_} = From ,	
-	{jid,ToUser,_,_,_,_,_} = To ,	
-	%% 取自配置文件 ejabberd.cfg
-	HTTPServer =  ejabberd_config:get_local_option({http_server,Domain}),
-	%% 取自配置文件 ejabberd.cfg
-	HTTPService = ejabberd_config:get_local_option({http_server_service_client,Domain}),
-	HTTPTarget = string:concat(HTTPServer,HTTPService),
-	Msg = get_text_message_from_packet( Packet ),
-	{Service,Method,FN,TN,MSG,MSG_ID,MType} = {
-				      list_to_binary("service.uri.pet_user"),
-				      list_to_binary("pushMsgApn"),
-				      list_to_binary(FromUser),
-				      list_to_binary(ToUser),
-				      list_to_binary(Msg),
-				      list_to_binary(MID),
-				      list_to_binary(MsgType)
-				     },
-	Gid = case MsgType of
-		"groupchat" ->
-			{xmlelement,"message",Header,_ } = Packet,
-			D = dict:from_list(Header),
-			GroupID = dict:fetch("groupid", D),
-			list_to_binary(GroupID);
-		_ ->
-			<<"">>
-	end,
-	ParamObj={obj,[ 
-		       {"service",Service},
-		       {"method",Method},
-		       {"channel",list_to_binary("9")},
-		       {"params",{obj,[{"msgtype",MType},{"fromname",FN},{"toname",TN},{"msg",MSG},{"id",MSG_ID},{"groupid",Gid}]} } 
-		      ]},
-	Form = "body="++http_uri:encode( rfc4627:encode(ParamObj) ),
-	try
-		?DEBUG("MMMMMMMMMMMMMMMMM===Form=~p~n",[Form]),
-		case httpc:request(post,{ HTTPTarget ,[], ?HTTP_HEAD , Form },[],[] ) of   
-			{ok, {_,_,Body}} ->
-				case rfc4627:decode(Body) of
-					{ok,Obj,_Re} -> 
-						case rfc4627:get_field(Obj,"success") of
-							{ok,false} ->
-								{ok,Entity} = rfc4627:get_field(Obj,"entity"),
-								?ERROR_MSG("liangc-push-msg error: ~p~n",[binary_to_list(Entity)]);
-							_ ->
-								?INFO_MSG("liangc_push_offline_ok_id=~p ; Obj=~p",[MID,Obj]),
-								ok
-						end;
-					Other -> 
-						?ERROR_MSG("liangc_push_msg_error_id=~p ; Other=~p",[MID,Other]),
-						false
-				end ;
-			{error, Reason} ->
-				?INFO_MSG("[ERROR] cause N=~p~nErr=~p~nForm=~p~n",[N,Reason,Form]),
-				timer:sleep(200),
-				send_offline_message(From,To,Packet,MID,MsgType,N+1)
-		end 
-	catch 
-		_:_ ->
-			Err0 = erlang:get_stacktrace(),
-			?ERROR_MSG("[ERROR] offline_message_hook_handler N=~p~nErr=~p~nForm=~p~n",[N,Err0,Form]),
-			timer:sleep(200),
-			send_offline_message(From,To,Packet,MID,MsgType,N+1)	
-	end,
-	ok;
+    {jid,FromUser,Domain,_,_,_,_} = From ,
+    {jid,ToUser,_,_,_,_,_} = To ,
+    %% 取自配置文件 ejabberd.cfg
+    HTTPServer =  ejabberd_config:get_local_option({http_server,Domain}),
+    %% 取自配置文件 ejabberd.cfg
+    HTTPService = ejabberd_config:get_local_option({http_server_service_client,Domain}),
+    HTTPTarget = string:concat(HTTPServer,HTTPService),
+    Msg = get_text_message_from_packet( Packet ),
+    {Service,Method,FN,TN,MSG,MSG_ID,MType} = {
+        list_to_binary("service.uri.pet_user"),
+        list_to_binary("pushMsgApn"),
+        list_to_binary(FromUser),
+        list_to_binary(ToUser),
+        list_to_binary(Msg),
+        list_to_binary(MID),
+        list_to_binary(MsgType)
+                                              },
+    Gid = case MsgType of
+              "groupchat" ->
+                  {xmlelement,"message",Header,_ } = Packet,
+                  D = dict:from_list(Header),
+                  GroupID = dict:fetch("groupid", D),
+                  list_to_binary(GroupID);
+              _ ->
+                  <<"">>
+          end,
+    ParamObj={obj,[
+        {"service",Service},
+        {"method",Method},
+        {"channel",list_to_binary("9")},
+        {"params",{obj,[{"msgtype",MType},{"fromname",FN},{"toname",TN},{"msg",MSG},{"id",MSG_ID},{"groupid",Gid}]} }
+                  ]},
+    Form = "body="++http_uri:encode( rfc4627:encode(ParamObj) ),
+    try
+        ?DEBUG("MMMMMMMMMMMMMMMMM===Form=~p~n",[Form]),
+        case httpc:request(post,{ HTTPTarget ,[], ?HTTP_HEAD , Form },[],[] ) of
+            {ok, {_,_,Body}} ->
+                case rfc4627:decode(Body) of
+                    {ok,Obj,_Re} ->
+                        case rfc4627:get_field(Obj,"success") of
+                            {ok,false} ->
+                                {ok,Entity} = rfc4627:get_field(Obj,"entity"),
+                                ?INFO_MSG("liangc-push-msg error: ~p~n",[binary_to_list(Entity)]);
+                            _ ->
+                                ok
+                        end;
+                    Other ->
+                        ?INFO_MSG("liangc_push_msg_error_id=~p ; Other=~p",[MID,Other]),
+                        false
+                end ;
+            {error, Reason} ->
+                ?INFO_MSG("[ERROR] cause N=~p~nErr=~p~nForm=~p~n",[N,Reason,Form]),
+                timer:sleep(200),
+                send_offline_message(From,To,Packet,MID,MsgType,N+1)
+        end
+    catch
+        _:_ ->
+            Err0 = erlang:get_stacktrace(),
+            ?ERROR_MSG("[ERROR] offline_message_hook_handler N=~p~nErr=~p~nForm=~p~n",[N,Err0,Form]),
+            timer:sleep(200),
+            send_offline_message(From,To,Packet,MID,MsgType,N+1)
+    end,
+    ok;
 send_offline_message(From ,To ,Packet,MID,MsgType,3) ->
-	?ERROR_MSG("[ERROR] offline_message_hook_handler_lost ~p",[{From ,To ,Packet,MID,MsgType,3}]),
-	ok.
+    ?ERROR_MSG("[ERROR] offline_message_hook_handler_lost ~p",[{From ,To ,Packet,MID,MsgType,3}]),
+    ok.
 
 user_send_packet_handler(#jid{user=User,server=Domain}=From, #jid{user=ToUser,server=ToDomain}=To, Packet) ->
-	?INFO_MSG("user ~p@~p to ~p@~p content ~p", [User,Domain,ToUser,ToDomain, Packet]),
-	try
-		[_,E|_] = tuple_to_list(Packet),
-		case E of 
-			"message" ->
-				{_,"message",Attr,_} = Packet,
-				D = dict:from_list(Attr),
-				MT = case dict:is_key("msgtype",D) of true-> dict:fetch("msgtype",D); _-> "" end,
+    try
+        [_,E|_] = tuple_to_list(Packet),
+        case E of
+            "message" ->
+                {_,"message",Attr,_} = Packet,
+                D = dict:from_list(Attr),
+                MT = case dict:is_key("msgtype",D) of true-> dict:fetch("msgtype",D); _-> "" end,
 				
 				server_ack(From,To,Packet),
 				if MT == "groupchat" andalso "gamepro.com" == Domain ->
@@ -215,34 +212,34 @@ user_send_packet_handler(#jid{user=User,server=Domain}=From, #jid{user=ToUser,se
 	ok.
 
 send_message_to_user(#jid{user=FU, server = Domain}=From, #jid{user = ToUser}=To, Packet) ->
-	{_,"message",Attr,_} = Packet,
-	?DEBUG("Attr=~p", [Attr] ),
-	D = dict:from_list(Attr),
-	MT = case dict:is_key("msgtype",D) of true-> dict:fetch("msgtype",D); _-> "" end,
-	%% 理论上讲，这个地方一定要有一个ID，不过如果没有，其实对服务器没影响，但客户端就麻烦了
-	SRC_ID_STR = case dict:is_key("id", D) of true -> dict:fetch("id", D); _ -> "" end,
-	?DEBUG("SRC_ID_STR=~p", [SRC_ID_STR] ),
-	SYNCID = SRC_ID_STR++"@"++Domain,
-	if MT=/=[],MT=/="msgStatus", MT=/="frienddynamicmsg",FU=/="messageack" ->
-%% 			if IS_GROUP_CHAT=:=false,ACK_FROM,MT=/="msgStatus", MT=/="frienddynamicmsg",FU=/="messageack" ->
-		   {M,S,SS} = os:timestamp(),
-		   MsgTime = lists:sublist(erlang:integer_to_list(M*1000000000000+S*1000000+SS),1,13),
-		   {Tag,E,Attr,Body} = Packet,
-		   RAttr0 = [{K,V} || {K, V} <- Attr, K=/="msgTime"],
-		   RAttr1 = [{"msgTime",MsgTime}|RAttr0],
-		   RPacket = {Tag,E,RAttr1,Body},
-		   ?DEBUG("send message trigger store msg ~p", [SYNCID]),
-		   store_message(SYNCID, From, To, RPacket),
-%% 		   aa_usermsg_handler:store_msg(SYNCID, From, To, RPacket),
-	   		user_receive_packet_handler(From,To,Packet);
-	   MT=:="msgStatus",ToUser=/="messageack" ->
-		   ?DEBUG("send message trigger del msg ~p", [SYNCID]),
-		   del_message(SYNCID, From),
-		   aa_usermsg_handler:del_msg(SYNCID, From),
-		   ack_task({ack,SYNCID});
-	   true ->
-		   skip
-	end.
+    {_,"message",Attr,_} = Packet,
+    ?DEBUG("Attr=~p", [Attr] ),
+    D = dict:from_list(Attr),
+    MT = case dict:is_key("msgtype",D) of true-> dict:fetch("msgtype",D); _-> "" end,
+    %% 理论上讲，这个地方一定要有一个ID，不过如果没有，其实对服务器没影响，但客户端就麻烦了
+    SRC_ID_STR = case dict:is_key("id", D) of true -> dict:fetch("id", D); _ -> "" end,
+    ?DEBUG("SRC_ID_STR=~p", [SRC_ID_STR] ),
+    SYNCID = SRC_ID_STR++"@"++Domain,
+    if MT=/=[],MT=/="msgStatus", MT=/="frienddynamicmsg",FU=/="messageack" ->
+            %% 			if IS_GROUP_CHAT=:=false,ACK_FROM,MT=/="msgStatus", MT=/="frienddynamicmsg",FU=/="messageack" ->
+            {M,S,SS} = os:timestamp(),
+            MsgTime = lists:sublist(erlang:integer_to_list(M*1000000000000+S*1000000+SS),1,13),
+            {Tag,E,Attr,Body} = Packet,
+            RAttr0 = [{K,V} || {K, V} <- Attr, K=/="msgTime"],
+            RAttr1 = [{"msgTime",MsgTime}|RAttr0],
+            RPacket = {Tag,E,RAttr1,Body},
+            ?DEBUG("send message trigger store msg ~p", [SYNCID]),
+            store_message(SYNCID, From, To, RPacket),
+            %% 		   aa_usermsg_handler:store_msg(SYNCID, From, To, RPacket),
+            user_receive_packet_handler(From,To,Packet);
+        MT=:="msgStatus",ToUser=/="messageack" ->
+            ?DEBUG("send message trigger del msg ~p", [SYNCID]),
+            del_message(SYNCID, From),
+            %            aa_usermsg_handler:del_msg(SYNCID, From),
+            ack_task({ack,SYNCID});
+        true ->
+            skip
+    end.
 
 user_receive_packet_handler(#jid{user = FU, server=FD}=From, To, Packet) ->
 	[_,E|_] = tuple_to_list(Packet),
@@ -553,14 +550,9 @@ get_data_node(#jid{server = Domain}=User) ->
 	FinalNode.
 
 test_node(TableName) ->
-	case catch mnesia:table_info(TableName, where_to_write) of
-		[Node|_] ->
-			case net_adm:ping(Node) of
-				pong ->
-					Node;
-				_ ->
-					node()
-			end;
-		_ ->
-			node()
-	end.
+    case catch mnesia:table_info(TableName, where_to_write) of
+        [Node|_] ->
+            Node;
+        _ ->
+            node()
+    end.
