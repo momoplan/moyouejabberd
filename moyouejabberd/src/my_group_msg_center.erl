@@ -29,7 +29,9 @@
          list/0,
          update_user_group_info/3,
          init_user_group_info/2,
-         store_message/3
+         store_message/3,
+         delete_group_msg/2,
+         get_offline_msg/1
         ]).
 
 start_link() ->
@@ -112,7 +114,7 @@ create_or_copy_table(TableName, Opts, Copy) ->
 
 init([]) ->
     [Domain|_] = ?MYHOSTS,
-    Pids = case ejabberd_config:get_local_option({handle_group_msg_tables, Domain}) of
+    Pids = case ejabberd_config:get_local_option({handle_group_msg_center, Domain}) of
                1 ->
                    ets:new(my_group_msgpid_info, [{keypos, 1}, named_table, public, set]),
                    create_or_copy_table(group_message, [{record_name, group_msg},

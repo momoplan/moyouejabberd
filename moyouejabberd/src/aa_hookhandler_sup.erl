@@ -24,7 +24,8 @@ init([]) ->
 	AAMsgStastic ={aa_msg_statistic, {aa_msg_statistic, start_link, []}, permanent, 3000, worker, [aa_msg_statistic]},
 	AAMsgCleaner ={my_msg_cleaner, {my_msg_cleaner, start_link, []}, permanent, 3000, worker, [my_msg_cleaner]},
 	MYMsgCenter ={my_msg_center, {my_msg_center, start_link, []}, permanent, 3000, worker, [my_msg_center]},
-	{ok, {{one_for_one, 5, 10}, [AAHookhandler,AAGroupChatSup, AAUserMsgPisSup, AAMsgStastic, AAMsgCleaner,MYMsgCenter]}}.
+        MYGroupMsgCenter ={my_group_msg_center, {my_group_msg_center, start_link, []}, permanent, 3000, worker, [my_group_msg_center]},
+	{ok, {{one_for_one, 5, 10}, [AAHookhandler,AAGroupChatSup, AAUserMsgPisSup, AAMsgStastic, AAMsgCleaner,MYMsgCenter, MYGroupMsgCenter]}}.
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================

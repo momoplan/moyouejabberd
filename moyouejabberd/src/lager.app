@@ -52,7 +52,6 @@
             {async_threshold_window, 5},
 
             {handlers, [
-             {lager_file_backend, [{dir, "/opt/ejabberd/runtime/var/log/ejabberd/"}, {base_name, "error"},  {level, error}, {size, 0}, {date, "$D0"}, {count, 5}]},
              {lager_file_backend, [{dir, "/opt/ejabberd/runtime/var/log/ejabberd/"}, {base_name, "console"}, {level, info}, {size, 0}, {date, "$D0"}, {count, 5}]}]}
         ]}
  ]}.

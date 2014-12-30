@@ -704,7 +704,7 @@ get_group_msg(User) ->
 
 
 get_group_data_node() ->
-    case catch mnesia:table_info(my_group_msg_list, where_to_write) of
+    case catch mnesia:table_info(group_message, where_to_write) of
         [Node|_] ->
             Node;
         Reason ->
