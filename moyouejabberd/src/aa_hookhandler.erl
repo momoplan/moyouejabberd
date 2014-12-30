@@ -20,14 +20,15 @@
 %% ====================================================================
 
 -export([
-	 start_link/0,
-	 user_send_packet_handler/3,
-	 offline_message_hook_handler/3,
-	 send_message_to_user/3,
-	 rlcfg/0,
-	 stop/0,
-	 get_offline_msg/1,
-	 reinit_pushpids/0
+    start_link/0,
+    user_send_packet_handler/3,
+    offline_message_hook_handler/3,
+    send_message_to_user/3,
+    send_group_msg_to_user/4,
+    rlcfg/0,
+    stop/0,
+    get_offline_msg/1,
+    reinit_pushpids/0
 	]).
 
 start_link() ->
@@ -178,93 +179,201 @@ send_offline_message(From ,To ,Packet,MID,MsgType,3) ->
     ?ERROR_MSG("[ERROR] offline_message_hook_handler_lost ~p",[{From ,To ,Packet,MID,MsgType,3}]),
     ok.
 
-user_send_packet_handler(#jid{user=User,server=Domain}=From, #jid{user=ToUser,server=ToDomain}=To, Packet) ->
-    try
-        [_,E|_] = tuple_to_list(Packet),
-        case E of
-            "message" ->
-                {_,"message",Attr,_} = Packet,
-                D = dict:from_list(Attr),
-                MT = case dict:is_key("msgtype",D) of true-> dict:fetch("msgtype",D); _-> "" end,
-				
-				server_ack(From,To,Packet),
-				if MT == "groupchat" andalso "gamepro.com" == Domain ->
-					   GroupId = case dict:is_key("groupid", D) of
-									 true ->
-										 dict:fetch("groupid", D);
-									 _ ->
-										 To#jid.user
-								 end,
-					   aa_group_chat:route_group_msg(From, GroupId, Packet);
-					true -> 
-						send_message_to_user(From, To, Packet)
-				end;
-			_ ->
-				?DEBUG("~p", [skip_00] ),
-				skip
-		end,
-		?DEBUG("~n************** my_hookhandler user_send_packet_handler <<<<<<<<<<<<<<<~p~n ",[liangchuan_debug]) 
-	catch
-		ErrType:Reason ->
-			Err = erlang:get_stacktrace(),
-			?ERROR_MSG("user_send_packet_handler_error ~p:~p:> ~p",[ErrType, Reason, Err])
-	end,
-	ok.
 
-send_message_to_user(#jid{user=FU, server = Domain}=From, #jid{user = ToUser}=To, Packet) ->
+get_user_list_by_group_id(Domain, GroupId)->
+    HTTPServer =  ejabberd_config:get_local_option({http_server, Domain}),
+    HTTPService = ejabberd_config:get_local_option({http_server_service_client, Domain}),
+    HTTPTarget = string:concat(HTTPServer, HTTPService),
+    ParamObj = {obj, [{"sn", list_to_binary(get_id())},
+                      {"service", list_to_binary("service.groupchat")},
+                      {"method", list_to_binary("getUserList")},
+                      {"params", {obj, [{"groupId", list_to_binary(GroupId)}]}}]},
+    Form = "body=" ++ rfc4627:encode(ParamObj),
+    try
+        case httpc:request(post, {HTTPTarget ,[], ?HTTP_HEAD , Form }, [], []) of
+            {ok, {_, _, Body}} ->
+                DBody = rfc4627:decode(Body),
+                case DBody of
+                    {ok, Obj, _Re} ->
+                        case rfc4627:get_field(Obj, "success") of
+                            {ok, true} ->
+                                rfc4627:get_field(Obj, "entity");
+                            Err1 ->
+                                ?INFO_MSG("get_user_list_by_group_id return success failed : ~p~n",[Err1]),
+                                error
+                        end;
+                    Error ->
+                        ?INFO_MSG("get_user_list_by_group_id DBody failed : ~p~n",[Error]),
+                        error
+                end ;
+            {error, Reason} ->
+                ?INFO_MSG("get_user_list_by_group_id httpc:request failed Reason : ~p~n",[Reason]),
+                error
+        end
+    catch
+        ErrType:ErrReason->
+            ?INFO_MSG("get_user_list_by_group_id unknow error Type : ~p Reason :~p~n", [ErrType, ErrReason]),
+            error
+    end.
+
+get_group_members(GroupId, Domain) ->
+    case mnesia:dirty_read(?GOUPR_MEMBER_TABLE, GroupId) of
+        [] ->
+            case get_user_list_by_group_id(Domain,GroupId) of
+                {ok, UserList} ->
+                    UserList1 = [binary_to_list(Usr) || Usr <- UserList],
+                    Data = #group_members{gid = GroupId, members = UserList1},
+                    mnesia:dirty_write(?GOUPR_MEMBER_TABLE, Data),
+                    {ok, UserList1};
+                Err ->
+                    error
+            end;
+        [#group_members{members = Members}] ->
+            {ok, Members};
+        _ ->
+            error
+    end.
+
+
+user_send_packet_handler(#jid{server = Domain}=From, To, Packet) ->
+    try
+        case Packet of
+            {Tag, "message", Attr, Body} ->
+                MT = proplists:get_value("msgtype", Attr, ""),
+                if MT == "groupchat" andalso "gamepro.com" == Domain ->
+                        GroupId = proplists:get_value("groupid", Attr, To#jid.user),
+                        Sid = store_group_message(From, GroupId, Packet),
+                        Attr1 = [{"server_id", Sid} | Attr],
+                        RPacket = {Tag, "message", Attr1, Body},
+                        server_ack(From, To, RPacket),
+                        spawn(?MODULE, send_group_msg_to_user, [From, GroupId, Sid, RPacket]);
+                    true ->
+                        server_ack(From, To, Packet),
+                        send_message_to_user(From, To, Packet)
+                end;
+            _ ->
+                skip
+        end
+    catch
+        ErrType:Reason ->
+            Err = erlang:get_stacktrace(),
+            ?ERROR_MSG("user_send_packet_handler_error ~p:~p:> ~p",[ErrType, Reason, Err])
+    end.
+
+route_group_msg(Packet, From, #jid{user = User, server = Domain} = To, Sid, GroupId) ->
+    {X,E,Attr,Body} = Packet,
+    Attr1 = lists:map(fun({K,V})->
+                              case K of
+                                  "to" -> {K, User ++ "@" ++ Domain};
+                                  "id" -> {K, Sid};
+                                  "msgtype" -> {K, "groupchat"};
+                                  _-> {K, V}
+                              end
+                      end, Attr),
+    Attr2 = lists:append(Attr1, [{"groupid", GroupId}]),
+    Attr3 = lists:append(Attr2, [{"g","0"}]),
+    RPacket = {X, E, Attr3, Body},
+    send_message_to_user(From, To, RPacket),
+    case ejabberd_router:route(From, To, RPacket) of
+        ok ->
+            {ok, ok};
+        Err ->
+            ?INFO_MSG("route_group_msg failed, err : ~p~n",[Err]),
+            {error, Err}
+    end.
+
+send_group_msg_to_user(#jid{user = User, server = Domain} = From, GroupId, Sid, Packet) ->
+    case get_group_members(GroupId, Domain) of
+        {ok, Members} ->
+            case lists:member(User, Members) of
+                true->
+                    [begin
+                         UID = case is_list(Member) of
+                                   true ->
+                                       Member;
+                                   false ->
+                                       binary_to_list(Member)
+                               end,
+                         if User == UID ->
+                                 skip;
+                             true ->
+                                 To = #jid{user = UID, server = Domain, luser = UID, lserver = Domain, resource = [], lresource = []},
+                                 spawn(fun()-> route_group_msg(Packet, From, To, Sid, GroupId) end)
+                         end
+                     end || Member <- Members];
+                _ ->
+                    %%用户不在此群，删除此消息
+                    delete_group_msg(GroupId, Sid)
+            end;
+        _ ->
+            %%获取群成员报错，删除此消息
+            delete_group_msg(GroupId, Sid)
+    end.
+
+
+send_message_to_user(#jid{user=FU, server = Domain} = From, #jid{user = ToUser} = To, Packet) ->
     {_,"message",Attr,_} = Packet,
-    ?DEBUG("Attr=~p", [Attr] ),
     D = dict:from_list(Attr),
     MT = case dict:is_key("msgtype",D) of true-> dict:fetch("msgtype",D); _-> "" end,
-    %% 理论上讲，这个地方一定要有一个ID，不过如果没有，其实对服务器没影响，但客户端就麻烦了
     SRC_ID_STR = case dict:is_key("id", D) of true -> dict:fetch("id", D); _ -> "" end,
-    ?DEBUG("SRC_ID_STR=~p", [SRC_ID_STR] ),
-    SYNCID = SRC_ID_STR++"@"++Domain,
+    SYNCID = SRC_ID_STR ++ "@" ++ Domain,
     if MT=/=[],MT=/="msgStatus", MT=/="frienddynamicmsg",FU=/="messageack" ->
-            %% 			if IS_GROUP_CHAT=:=false,ACK_FROM,MT=/="msgStatus", MT=/="frienddynamicmsg",FU=/="messageack" ->
             {M,S,SS} = os:timestamp(),
             MsgTime = lists:sublist(erlang:integer_to_list(M*1000000000000+S*1000000+SS),1,13),
             {Tag,E,Attr,Body} = Packet,
             RAttr0 = [{K,V} || {K, V} <- Attr, K=/="msgTime"],
             RAttr1 = [{"msgTime",MsgTime}|RAttr0],
             RPacket = {Tag,E,RAttr1,Body},
-            ?DEBUG("send message trigger store msg ~p", [SYNCID]),
-            store_message(SYNCID, From, To, RPacket),
-            %% 		   aa_usermsg_handler:store_msg(SYNCID, From, To, RPacket),
-            user_receive_packet_handler(From,To,Packet);
-        MT=:="msgStatus",ToUser=/="messageack" ->
-            ?DEBUG("send message trigger del msg ~p", [SYNCID]),
-            del_message(SYNCID, From),
-            %            aa_usermsg_handler:del_msg(SYNCID, From),
-            ack_task({ack,SYNCID});
+            case if_group_msg(SRC_ID_STR) of
+                true ->
+                    [_, GroupId, _] = re:split(SRC_ID_STR, "_", [{return, list}]),
+                    init_user_group_info(ToUser, GroupId);
+                _ ->
+                    store_message(SYNCID, From, To, RPacket),
+                    user_receive_packet_handler(From, To, Packet)
+            end;
+        MT=:="msgStatus", ToUser =/= "messageack" ->
+            case if_group_msg(SRC_ID_STR) of
+                true ->
+                    [_, GroupId, Seq] = re:split(SRC_ID_STR, "_", [{return, list}]),
+                    update_user_group_info(ToUser, GroupId, Seq);
+                _ ->
+                    del_message(SYNCID, From),
+                    ack_task({ack, SYNCID})
+            end;
         true ->
             skip
     end.
 
+
+if_group_msg([$m,$y,$g,$r,$o,$u,$p | _]) ->
+    true;
+if_group_msg(_) ->
+    false;
+
 user_receive_packet_handler(#jid{user = FU, server=FD}=From, To, Packet) ->
-	[_,E|_] = tuple_to_list(Packet),
-	Domain = FD,
-	if FU == "messageack" ->
-		   skip;
-	   true ->
-		   case E of 
-			   "message" ->
-				   {_,"message",Attr,_} = Packet,
-				   D = dict:from_list(Attr),
-				   MT = case dict:is_key("msgtype",D) of true-> dict:fetch("msgtype",D); _-> "" end,
-				   if MT=/=[],MT=/="msgStatus", MT=/="frienddynamicmsg" ->
-						  SRC_ID_STR = case dict:is_key("id", D) of true -> dict:fetch("id", D); _ -> "" end,
-						  SYNCID = SRC_ID_STR++"@"++Domain,
-						  TPid = erlang:spawn(fun()-> ack_task(SYNCID,From,To,Packet) end),
-						  ets:insert(?ETS_ACK_TASK, {SYNCID, TPid});
-					  true ->
-						  skip
-				   end;
-			   _ ->
-				   skip
-		   end
-	end,
-	ok.
+    [_,E|_] = tuple_to_list(Packet),
+    Domain = FD,
+    if FU == "messageack" ->
+            skip;
+        true ->
+            case E of
+                "message" ->
+                    {_,"message",Attr,_} = Packet,
+                    D = dict:from_list(Attr),
+                    MT = case dict:is_key("msgtype",D) of true-> dict:fetch("msgtype",D); _-> "" end,
+                    if MT =/= [],MT =/= "msgStatus", MT =/= "frienddynamicmsg" ->
+                            SRC_ID_STR = case dict:is_key("id", D) of true -> dict:fetch("id", D); _ -> "" end,
+                            SYNCID = SRC_ID_STR ++ "@" ++ Domain,
+                            TPid = erlang:spawn(fun()-> ack_task(SYNCID, From, To, Packet) end),
+                            ets:insert(?ETS_ACK_TASK, {SYNCID, TPid});
+                        true ->
+                            skip
+                    end;
+                _ ->
+                    skip
+            end
+    end.
 
 
 
@@ -318,46 +427,49 @@ handle_call(rebuild_pushpids, _From, State) ->
 handle_call(_Call, _From, State)->
 	{reply, ok, State}.
 
-handle_cast({server_ack,#jid{server=FD},_To,Packet},State)->
-	Domain = FD,
-	{_,"message",Attr,_} = Packet,
-	D = dict:from_list(Attr),
-	MT = case dict:is_key("msgtype",D) of true-> dict:fetch("msgtype",D); _-> "" end,
-	SRC_ID_STR = case dict:is_key("id", D) of true -> dict:fetch("id", D); _ -> "" end,
-	if ( (MT=:="normalchat") or (MT=:="groupchat") ) ->
-		   case dict:is_key("from", D) of 
-			   true -> 
-				   Attributes = [
-						 {"id",get_id()},
-						 {"to",dict:fetch("from", D)},
-						 {"from","messageack@"++Domain},
-						 {"type","normal"},
-						 {"msgtype",""},
-						 {"action","ack"}
-				   ],
-				   Child = [{xmlelement, "body", [], [
-						{xmlcdata, list_to_binary("{'src_id':'"++SRC_ID_STR++"','received':'true'}")}
-				   ]}],
-				   Answer = {xmlelement, "message", Attributes , Child},
-				   FF = jlib:string_to_jid(xml:get_tag_attr_s("from", Answer)),
-				   TT = jlib:string_to_jid(xml:get_tag_attr_s("to", Answer)),
-				   ?DEBUG("Answer ::::> FF=~p ; TT=~p ; P=~p ", [FF,TT,Answer] ),
-				   case catch ejabberd_router:route(FF, TT, Answer) of
-					   ok -> 
-						   ?DEBUG("Answer ::::> ~p ", [ok] );
-					   _ERROR ->
-						   ?ERROR_MSG("Answer ::::> error=~p ", [_ERROR] )
-				   end,
-				   answer;
-			   _ ->
-				   ?DEBUG("~p", [skip_01] ),
-				   skip
-		   end;
-	   true ->
-		   ?DEBUG("~p", [skip_02] ),
-		   skip
-	end,
-	{noreply, State};
+handle_cast({server_ack, #jid{server=FD}, _To, Packet},State)->
+    Domain = FD,
+    {_,"message",Attr,_} = Packet,
+    D = dict:from_list(Attr),
+    MT = case dict:is_key("msgtype",D) of true-> dict:fetch("msgtype",D); _-> "" end,
+    SRC_ID_STR = case dict:is_key("id", D) of true -> dict:fetch("id", D); _ -> "" end,
+    Sid = case dict:is_key("server_id", D) of true -> dict:fetch("server_id", D); _ -> "" end,
+    if ( (MT=:="normalchat") or (MT=:="groupchat") ) ->
+            case dict:is_key("from", D) of
+                true ->
+                    Attributes = [
+                        {"id",get_id()},
+                        {"to",dict:fetch("from", D)},
+                        {"from","messageack@"++Domain},
+                        {"type","normal"},
+                        {"msgtype",""},
+                        {"action","ack"} |
+                        case Sid of
+                            "" ->
+                                [];
+                            _ ->
+                                [{"server_id", Sid}]
+                        end
+                                 ],
+                    Child = [{xmlelement, "body", [], [
+                        {xmlcdata, list_to_binary("{'src_id':'"++SRC_ID_STR++"','received':'true'}")}
+                                                      ]}],
+                    Answer = {xmlelement, "message", Attributes , Child},
+                    FF = jlib:string_to_jid(xml:get_tag_attr_s("from", Answer)),
+                    TT = jlib:string_to_jid(xml:get_tag_attr_s("to", Answer)),
+                    case catch ejabberd_router:route(FF, TT, Answer) of
+                        ok ->
+                            answer;
+                        _ERROR ->
+                            ?INFO_MSG("Answer ::::> error=~p ", [_ERROR] )
+                    end;
+                _ ->
+                    skip
+            end;
+        true ->
+            skip
+    end,
+    {noreply, State};
 
 handle_cast({deal_offline_msg, From,To,Packet}, State) ->
 	case State#state.push_pids of
@@ -397,31 +509,28 @@ code_change(_OldVsn, State, _Extra) ->
 
 
 ack_task({ack,ID})->
-	try
-		case ets:lookup(?ETS_ACK_TASK, ID) of
-			[{ID, ACKTaskPid}] ->
-				ACKTaskPid!ack;
-			_ ->
-				skip
-		end
-	catch 
-		_:_-> 
-			Error = erlang:get_stacktrace(),
-			?ERROR_MSG("DO_ACK_TASK_ID=~p ; M=~p ; ERROR=~p.",[ID,ack,Error]),
-			ack_err
-	end.
+    try
+        case ets:lookup(?ETS_ACK_TASK, ID) of
+            [{ID, ACKTaskPid}] ->
+                ACKTaskPid ! ack;
+            _ ->
+                skip
+        end
+    catch
+        _:_->
+            Error = erlang:get_stacktrace(),
+            ?INFO_MSG("DO_ACK_TASK_ID=~p ; M=~p ; ERROR=~p.",[ID,ack,Error]),
+            ack_err
+    end.
 
-ack_task(ID,#jid{user = User} = From,To,Packet)->
-	?DEBUG("user ~p ACK_TASK_~p ::::> START ~p.",[User, ID, self()]),
-	receive 
-		ack ->
-			?DEBUG("ACK_TASK_ ~p ::::> ACK ~p.",[self(), ID]),
-			ets:delete(?ETS_ACK_TASK, ID)
-	after ?TIME_OUT -> 
-		?DEBUG("ack ~p trigger offline msg push ~p", [self(),ID]),
-		ets:delete(?ETS_ACK_TASK, ID),
-		gen_server:cast(?MODULE, {deal_offline_msg, From, To, Packet})
-	end.
+ack_task(ID, From, To, Packet)->
+    receive
+        ack ->
+            ets:delete(?ETS_ACK_TASK, ID)
+    after ?TIME_OUT ->
+            ets:delete(?ETS_ACK_TASK, ID),
+            gen_server:cast(?MODULE, {deal_offline_msg, From, To, Packet})
+    end.
 
 
 server_ack(From,To,Packet)->
@@ -498,6 +607,41 @@ local_handle_offline_message() ->
 			local_handle_offline_message()
 	end.
 
+
+store_group_message(From, GroupId, Packet) ->
+    case get_group_data_node() of
+        none ->
+            ok;
+        Node ->
+            case rpc:call(Node, my_group_msg_center, store_message, [From, GroupId, Packet]) of
+                {badrpc, Reason} ->
+                    ?INFO_MSG("store_group_message failed, Node : ~p, User : ~p, Packet : ~p Reason : ~p~n",[Node, From, Packet, Reason]),
+                    throw({store_message_error, Reason});
+                {ok, Data} ->
+                    Data
+            end
+    end.
+
+
+
+init_user_group_info(User, GroupId) ->
+    case get_group_data_node() of
+        none ->
+            ok;
+        Node ->
+            rpc:cast(Node, my_group_msg_center, init_user_group_info, [User, GroupId])
+    end.
+
+
+update_user_group_info(User, GroupId, Seq) ->
+    case get_group_data_node() of
+        none ->
+            ok;
+        Node ->
+            rpc:cast(Node, my_group_msg_center, update_user_group_info, [User, GroupId, Seq])
+    end.
+    
+
 store_message(SYNCID, From, To, RPacket) ->
 	case get_data_node(To) of
 		none ->
@@ -522,12 +666,23 @@ get_offline_msg(User) ->
         Node ->
             case rpc:call(Node, my_msg_center, get_offline_msg, [User]) of
                 {badrpc, Reason} ->
-                    ?ERROR_MSG("get_offline_msg failed, Node : ~p, User : ~p, Reason : ~p~n",[Node, User, Reason]),
+                    ?INFO_MSG("get_offline_msg failed, Node : ~p, User : ~p, Reason : ~p~n",[Node, User, Reason]),
                     {ok, []};
                 Result ->
                     Result
             end
     end.
+
+
+get_group_data_node() ->
+    case catch mnesia:table_info(my_group_msg_list, where_to_write) of
+        [Node|_] ->
+            Node;
+        Reason ->
+            ?INFO_MSG("get_group_data_node failed, Reason : ~p~n",[Reason]),
+            none
+    end.
+
 
 get_data_node(#jid{server = Domain}=User) ->
 	FinalNode =
