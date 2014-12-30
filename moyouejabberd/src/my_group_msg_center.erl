@@ -12,6 +12,15 @@
 
 -define(USER_MSD_PID_COUNT, 128).
 
+
+-record(state, {user_msd_handlers = []}).
+
+-record(group_msg, {id, group_id, from, packet, timestamp, expire_time, score}).
+
+-record(group_id_seq, {group_id, sequence = 0}).
+
+-record(user_group_info, {user_id, group_info_list}).
+
 %% ====================================================================
 %% API functions
 %% ====================================================================
@@ -33,6 +42,24 @@ list() ->
     gen_server:call(?MODULE, {list}).
 
 
+get_offline_msg(User) ->
+    case mnesia:dirty_read(user_group_info, User) of
+        [] ->
+            {ok, []};
+        [GroupInfo] ->
+            Msgs = lists:fold(fun({GroupId, Seq}, Acc) ->
+                                      {ok, Msg1} = case ets:lookup(my_group_msgpid_info, GroupId) of
+                                                       [] ->
+                                                           {ok, Pid} = gen_server:call(?MODULE, {attach_new_pid, GroupId}),
+                                                           sync_deliver_task(get_offline_msg, Pid, GroupId, {GroupId, Seq});
+                                                       [{GroupId, Pid}] ->
+                                                           sync_deliver_task(get_offline_msg, Pid, GroupId, {GroupId, Seq})
+                                                   end,
+                                      lists:append(Acc, Msg1)
+                              end, [], GroupInfo#user_group_info.group_info_list),
+            {ok, Msgs}
+    end.
+
 update_user_group_info(User, GroupId, Seq) ->
     case ets:lookup(my_group_msgpid_info, GroupId) of
         [] ->
@@ -40,6 +67,15 @@ update_user_group_info(User, GroupId, Seq) ->
             sync_deliver_task(update_user_group_info, Pid, GroupId, {User, GroupId, Seq});
         [{GroupId, Pid}] ->
             sync_deliver_task(update_user_group_info, Pid, GroupId, {User, GroupId, Seq})
+    end.
+
+delete_group_msg(GroupId, Sid) ->
+    case ets:lookup(my_group_msgpid_info, GroupId) of
+        [] ->
+            {ok, Pid} = gen_server:call(?MODULE, {attach_new_pid, GroupId}),
+            sync_deliver_task(delete_group_msg, Pid, GroupId, {GroupId, Sid});
+        [{GroupId, Pid}] ->
+            sync_deliver_task(delete_group_msg, Pid, GroupId, {GroupId, Sid})
     end.
 
 init_user_group_info(User, GroupId) ->
@@ -73,13 +109,6 @@ create_or_copy_table(TableName, Opts, Copy) ->
 %% ====================================================================
 %% Behavioural functions 
 %% ====================================================================
--record(state, {user_msd_handlers = []}).
-
--record(group_msg, {id, group_id, from, packet, timestamp, expire_time, score}).
-
--record(group_id_seq, {group_id, sequence = 0}).
-
--record(user_group_info, {user_id, group_info_list}).
 
 init([]) ->
     [Domain|_] = ?MYHOSTS,
@@ -139,7 +168,7 @@ handle_call({attach_new_pid, GroupId}, _From, #state{user_msd_handlers = Handler
                                                                    {NewPid, State#state{user_msd_handlers = lists:keyreplace(NewPid, 1, Handler, {NewPid, Count + 1})}}
                                                            end,
                                      ets:delete(my_group_msgpid_info, GroupId),
-                                     ets:insert(my_group_msgpid_info, {GroupId, Pid1}),
+                                     ets:insert(my_group_msgpid_info, {GroupId, NewPid1}),
                                      {NewPid1, NewState}
                              end
                      end,
@@ -182,12 +211,19 @@ sync_deliver_task(Task, Pid, GroupId, Args) ->
     end.
 
 deliver(store_msg, Pid, {GroupId, User, Message}) ->
-    my_group_user_msg_handler:store_msg(Pid, GroupId, User, Message).
+    my_group_user_msg_handler:store_msg(Pid, GroupId, User, Message);
 
 
 deliver(init_user_group_info, Pid, {User, GroupId}) ->
-    my_group_user_msg_handler:init_user_group_info(Pid, GroupId, User).
+    my_group_user_msg_handler:init_user_group_info(Pid, GroupId, User);
 
 
 deliver(update_user_group_info, Pid, {User, GroupId, Seq}) ->
-    my_group_user_msg_handler:update_user_group_info(Pid, GroupId, User, Seq).
+    my_group_user_msg_handler:update_user_group_info(Pid, GroupId, User, Seq);
+
+
+deliver(get_offline_msg, Pid, {GroupId, Seq}) ->
+    my_group_user_msg_handler:get_offline_msg(Pid, GroupId, Seq);
+
+deliver(delete_group_msg, Pid, {GroupId, Sid}) ->
+    my_group_user_msg_handler:delete_group_msg(Pid, GroupId, Sid).

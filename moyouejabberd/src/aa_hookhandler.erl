@@ -336,7 +336,7 @@ send_message_to_user(#jid{user=FU, server = Domain} = From, #jid{user = ToUser} 
             case if_group_msg(SRC_ID_STR) of
                 true ->
                     [_, GroupId, Seq] = re:split(SRC_ID_STR, "_", [{return, list}]),
-                    update_user_group_info(ToUser, GroupId, Seq);
+                    update_user_group_info(ToUser, GroupId, list_to_integer(Seq));
                 _ ->
                     del_message(SYNCID, From),
                     ack_task({ack, SYNCID})
@@ -349,7 +349,7 @@ send_message_to_user(#jid{user=FU, server = Domain} = From, #jid{user = ToUser} 
 if_group_msg([$m,$y,$g,$r,$o,$u,$p | _]) ->
     true;
 if_group_msg(_) ->
-    false;
+    false.
 
 user_receive_packet_handler(#jid{user = FU, server=FD}=From, To, Packet) ->
     [_,E|_] = tuple_to_list(Packet),
@@ -623,6 +623,14 @@ store_group_message(From, GroupId, Packet) ->
     end.
 
 
+delete_group_msg(GroupId, Sid) ->
+    case get_group_data_node() of
+        none ->
+            ok;
+        Node ->
+            rpc:cast(Node, my_group_msg_center, delete_group_msg, [GroupId, Sid])
+    end.
+
 
 init_user_group_info(User, GroupId) ->
     case get_group_data_node() of
@@ -660,13 +668,34 @@ del_message(SYNCID, User) ->
 	end.
 
 get_offline_msg(User) ->
+    {ok, NormalList} = get_normal_msg(User),
+    {ok, GroupList} = get_group_msg(User),
+    {ok, lists:append(NormalList, GroupList)}.
+
+
+get_normal_msg(User) ->
     case get_data_node(User) of
         none ->
             aa_usermsg_handler:get_offline_msg(User);
         Node ->
             case rpc:call(Node, my_msg_center, get_offline_msg, [User]) of
                 {badrpc, Reason} ->
-                    ?INFO_MSG("get_offline_msg failed, Node : ~p, User : ~p, Reason : ~p~n",[Node, User, Reason]),
+                    ?INFO_MSG("get_normal_msg failed, Node : ~p, User : ~p, Reason : ~p~n",[Node, User, Reason]),
+                    {ok, []};
+                Result ->
+                    Result
+            end
+    end.
+
+
+get_group_msg(User) ->
+    case get_group_data_node() of
+        none ->
+            {ok, []};
+        Node ->
+            case rpc:call(Node, my_group_msg_center, get_offline_msg, [User]) of
+                {badrpc, Reason} ->
+                    ?INFO_MSG("get_group_msg failed, Node : ~p, User : ~p, Reason : ~p~n",[Node, User, Reason]),
                     {ok, []};
                 Result ->
                     Result

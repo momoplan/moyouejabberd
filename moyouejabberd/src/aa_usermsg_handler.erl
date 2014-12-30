@@ -185,27 +185,27 @@ load_mnesia_messages(MsgsIds, TableName) ->
 
 
 get_user_tables(#jid{server = Domain}=UserJid) ->
-	case mnesia:read(?MY_USER_TABLES, UserJid, write) of
-		[TableInfo] ->
-			TableInfo;
-		[] ->
-			case ejabberd_config:get_local_option({new_table, Domain}) of
-				[TableName, TableListName|_] when is_atom(TableName) ->
-					ok;
-				[TableNameStr, TableListNameStr|_] when is_list(TableNameStr) ->
-					TableName = list_to_atom(TableNameStr),			
-					TableListName = list_to_atom(TableListNameStr);
-				_ ->
-					NodeNameList = atom_to_list(node()),
-					TableName = list_to_atom(NodeNameList ++ "user_message"),			
-					TableListName = list_to_atom(NodeNameList ++ "user_msglist")
-			end,
-			TableInfo = #?MY_USER_TABLES{id = UserJid,
-										 msg_table = TableName, 
-										 msg_list_table = TableListName},
-			mnesia:dirty_write(?MY_USER_TABLES, TableInfo),
-			TableInfo		
-	end.
+    case mnesia:dirty_read(?MY_USER_TABLES, UserJid) of
+        [TableInfo] ->
+            TableInfo;
+        [] ->
+            case ejabberd_config:get_local_option({new_table, Domain}) of
+                [TableName, TableListName|_] when is_atom(TableName) ->
+                    ok;
+                [TableNameStr, TableListNameStr|_] when is_list(TableNameStr) ->
+                    TableName = list_to_atom(TableNameStr),
+                    TableListName = list_to_atom(TableListNameStr);
+                _ ->
+                    NodeNameList = atom_to_list(node()),
+                    TableName = list_to_atom(NodeNameList ++ "user_message"),
+                    TableListName = list_to_atom(NodeNameList ++ "user_msglist")
+            end,
+            TableInfo = #?MY_USER_TABLES{id = UserJid,
+                                         msg_table = TableName,
+                                         msg_list_table = TableListName},
+            mnesia:dirty_write(?MY_USER_TABLES, TableInfo),
+            TableInfo
+    end.
 
 unixtime() ->
     {M, S, _} = erlang:now(),
@@ -215,42 +215,42 @@ index_score()-> {M,S,T} = now(),  M*1000000000000+S*1000000+T.
 
 
 store_message(Key, From, #jid{server = Domain}=To, Packet) ->
-	OfflineExpireDays = case ejabberd_config:get_local_option({offline_expire_days, Domain}) of
-							undefined ->
-								1;
-							Days ->
-								Days
-						end,
-	Now = unixtime(),
-	ExpireTime = Now + OfflineExpireDays * 24 *3600,
-	Data = #user_msg{id = Key, 
-					 from = From, 
-					 to = To, 
-					 packat = Packet, 
-					 timestamp = Now, 
-					 expire_time = ExpireTime,
-					 score = index_score()},
-	case mnesia:dirty_read(?MY_USER_TABLES, To) of
-		[ #?MY_USER_TABLES{msg_table = TableName, msg_list_table = ListTableName}] ->
-			skip;
-		[] ->
-			NodeNameList = atom_to_list(node()),
-			TableName = list_to_atom(NodeNameList ++ "user_message"),			
-			ListTableName = list_to_atom(NodeNameList ++ "user_msglist"),
-			TableInfo = #?MY_USER_TABLES{id = To,
-										 msg_table = TableName, 
-										 msg_list_table = ListTableName},
-			mnesia:dirty_write(?MY_USER_TABLES, TableInfo)
-	end,
-	mnesia:dirty_write(TableName, Data),
-	case mnesia:dirty_read(ListTableName, To) of
-		[UserMsgList] ->
-			OldList = UserMsgList#user_msg_list.msg_list,
-			NewListData = UserMsgList#user_msg_list{msg_list = [Key|OldList]};
-		_ ->
-			NewListData = #user_msg_list{id = To, msg_list = [Key]}
-	end,
-	mnesia:dirty_write(ListTableName, NewListData).
+    OfflineExpireDays = case ejabberd_config:get_local_option({offline_expire_days, Domain}) of
+                            undefined ->
+                                1;
+                            Days ->
+                                Days
+                        end,
+    Now = unixtime(),
+    ExpireTime = Now + OfflineExpireDays * 24 *3600,
+    Data = #user_msg{id = Key,
+                     from = From,
+                     to = To,
+                     packat = Packet,
+                     timestamp = Now,
+                     expire_time = ExpireTime,
+                     score = index_score()},
+    case mnesia:dirty_read(?MY_USER_TABLES, To) of
+        [ #?MY_USER_TABLES{msg_table = TableName, msg_list_table = ListTableName}] ->
+            skip;
+        [] ->
+            NodeNameList = atom_to_list(node()),
+            TableName = list_to_atom(NodeNameList ++ "user_message"),
+            ListTableName = list_to_atom(NodeNameList ++ "user_msglist"),
+            TableInfo = #?MY_USER_TABLES{id = To,
+                                         msg_table = TableName,
+                                         msg_list_table = ListTableName},
+            mnesia:dirty_write(?MY_USER_TABLES, TableInfo)
+    end,
+    mnesia:dirty_write(TableName, Data),
+    case mnesia:dirty_read(ListTableName, To) of
+        [UserMsgList] ->
+            OldList = UserMsgList#user_msg_list.msg_list,
+            NewListData = UserMsgList#user_msg_list{msg_list = [Key|OldList]};
+        _ ->
+            NewListData = #user_msg_list{id = To, msg_list = [Key]}
+    end,
+    mnesia:dirty_write(ListTableName, NewListData).
 %% 	F = fun() ->
 %% 				case mnesia:read(?MY_USER_TABLES, To,write) of
 %% 					[ #?MY_USER_TABLES{msg_table = TableName, msg_list_table = ListTableName}] ->

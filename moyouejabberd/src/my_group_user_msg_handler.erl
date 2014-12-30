@@ -16,12 +16,21 @@
 %% ====================================================================
 -export([start/0,
          store_msg/4,
+         get_offline_msg/3,
          init_user_group_info/3,
          update_user_group_info/4
         ]).
 
-%% start_link() ->
-%% 	gen_server:start_link(?MODULE, [], []).
+
+-record(state, {}).
+
+
+-record(group_msg, {id, group_id, from, packet, timestamp, expire_time, score}).
+
+-record(group_id_seq, {group_id, sequence = 0}).
+
+-record(user_group_info, {user_id, group_info_list}).
+
 
 start() ->
     gen_server:start(?MODULE, [], []).
@@ -29,6 +38,11 @@ start() ->
 store_msg(Pid, GroupId, User, Message) ->
     gen_server:call(Pid, {store_msg, GroupId, User, Message}).
 
+get_offline_msg(Pid, GroupId, Seq) ->
+    gen_server:call(Pid, {get_offline_msg, GroupId, Seq}).
+
+delete_group_msg(Pid, GroupId, Sid) ->
+    gen_server:cast(Pid, {delete_group_msg, GroupId, Sid}).
 
 init_user_group_info(Pid, GroupId, User) ->
     gen_server:cast(Pid, {init_user_group_info, GroupId, User}).
@@ -56,21 +70,37 @@ get_id_seq(GroupId) ->
             Sequence + 1
     end.
 
+back_id_seq(GroupId) ->
+    case mnesia:dirty_read(group_id_seq, GroupId) of
+        [] ->
+            skip;
+        [{group_id_seq, GroupId, Sequence}] ->
+            mnesia:dirty_write(group_id_seq, #group_id_seq{group_id = GroupId, sequence = Sequence - 1})
+    end.
+
 %% ====================================================================
 %% Behavioural functions 
 %% ====================================================================
--record(state, {}).
 
-
--record(group_msg, {id, group_id, from, packet, timestamp, expire_time, score}).
-
--record(group_id_seq, {group_id, sequence = 0}).
 
 
 
 init([]) ->
     {ok, #state{}}.
 
+
+
+handle_call({get_offline_msg, GroupId, Seq}, _From, State) ->
+    CurrentSeq = get_id_seq(GroupId) - 1,
+    Msgs = lists:foldl(fun(X, Acc) ->
+                               case mnesia:dirty_read(group_message, id_prefix(GroupId) ++ integer_to_list(X)) of
+                                   [] ->
+                                       Acc;
+                                   [Data] ->
+                                       [Data | Acc]
+                               end
+                       end, [], lists:seq(Seq + 1, CurrentSeq)),
+    {reply, {ok, Msgs}, State};
 
 handle_call({store_msg, GroupId, User, Packet}, _From, State) ->
     Now = unixtime(),
@@ -93,6 +123,11 @@ handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
 
+
+handle_cast({delete_group_msg, GroupId, Sid}, State) ->
+    mnesia:drity_delete(group_message, Sid),
+    back_id_seq(GroupId),
+    {noreply, State};
 
 handle_cast({init_user_group_info, GroupId, User}, State) ->
     case mnesia:dirty_read(user_group_info, User) of
