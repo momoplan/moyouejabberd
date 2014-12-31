@@ -111,10 +111,14 @@ init([]) ->
 
 handle_call({get_offline_msg, GroupId, Seq, User}, _From, State) ->
     CurrentSeq = get_current_seq(GroupId),
-    %%��෵��20������Ⱥ������
+    %%最多返还20条离线群组数据
     List = if
                CurrentSeq - Seq > 20 ->
                    lists:seq(CurrentSeq - 20 + 1, CurrentSeq);
+               Seq > CurrentSeq ->
+                   %%异常，当用户序列号大于当前群的序列时，更新为当前群的序列
+                   my_group_msg_center:update_user_group_info(User, GroupId, CurrentSeq),
+                   [];
                true ->
                    lists:seq(Seq + 1, CurrentSeq)
            end,
@@ -182,7 +186,7 @@ handle_call(_Request, _From, State) ->
 
 
 handle_cast({delete_group_msg, GroupId, Sid}, State) ->
-    mnesia:drity_delete(group_message, Sid),
+    mnesia:dirty_delete(group_message, Sid),
     back_id_seq(GroupId),
     {noreply, State};
 
