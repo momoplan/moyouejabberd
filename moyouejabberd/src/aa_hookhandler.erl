@@ -225,7 +225,7 @@ get_group_members(GroupId, Domain) ->
                     Data = #group_members{gid = GroupId, members = UserList1},
                     mnesia:dirty_write(?GOUPR_MEMBER_TABLE, Data),
                     {ok, UserList1};
-                Err ->
+                _Err ->
                     error
             end;
         [#group_members{members = Members}] ->
@@ -257,7 +257,7 @@ user_send_packet_handler(#jid{server = Domain}=From, To, Packet) ->
     catch
         ErrType:Reason ->
             Err = erlang:get_stacktrace(),
-            ?ERROR_MSG("user_send_packet_handler_error ~p:~p:> ~p",[ErrType, Reason, Err])
+            ?INFO_MSG("user_send_packet_handler_error ~p:~p:> ~p",[ErrType, Reason, Err])
     end.
 
 route_group_msg(Packet, From, #jid{user = User, server = Domain} = To, Sid, GroupId) ->
@@ -327,16 +327,21 @@ send_message_to_user(#jid{user=FU, server = Domain} = From, #jid{user = ToUser} 
             case if_group_msg(SRC_ID_STR) of
                 true ->
                     [_, GroupId, _] = re:split(SRC_ID_STR, "_", [{return, list}]),
-                    init_user_group_info(ToUser, GroupId);
+                    init_user_group_info(To, GroupId),
+                    AckId = SRC_ID_STR ++ "_" ++ ToUser,
+                    receive_ack(AckId, From, To, Packet);
                 _ ->
                     store_message(SYNCID, From, To, RPacket),
-                    user_receive_packet_handler(From, To, Packet)
+                    receive_ack(SYNCID, From, To, Packet)
             end;
         MT=:="msgStatus", ToUser =/= "messageack" ->
+            ?INFO_MSG("ack from : ~p, id : ~p~n",[From, SRC_ID_STR]),
             case if_group_msg(SRC_ID_STR) of
                 true ->
                     [_, GroupId, Seq] = re:split(SRC_ID_STR, "_", [{return, list}]),
-                    update_user_group_info(ToUser, GroupId, list_to_integer(Seq));
+                    update_user_group_info(From, GroupId, list_to_integer(Seq)),
+                    AckId = SRC_ID_STR ++ "_" ++ FU,
+                    ack_task({ack, AckId});
                 _ ->
                     del_message(SYNCID, From),
                     ack_task({ack, SYNCID})
@@ -351,30 +356,10 @@ if_group_msg([$m,$y,$g,$r,$o,$u,$p | _]) ->
 if_group_msg(_) ->
     false.
 
-user_receive_packet_handler(#jid{user = FU, server=FD}=From, To, Packet) ->
-    [_,E|_] = tuple_to_list(Packet),
-    Domain = FD,
-    if FU == "messageack" ->
-            skip;
-        true ->
-            case E of
-                "message" ->
-                    {_,"message",Attr,_} = Packet,
-                    D = dict:from_list(Attr),
-                    MT = case dict:is_key("msgtype",D) of true-> dict:fetch("msgtype",D); _-> "" end,
-                    if MT =/= [],MT =/= "msgStatus", MT =/= "frienddynamicmsg" ->
-                            SRC_ID_STR = case dict:is_key("id", D) of true -> dict:fetch("id", D); _ -> "" end,
-                            SYNCID = SRC_ID_STR ++ "@" ++ Domain,
-                            TPid = erlang:spawn(fun()-> ack_task(SYNCID, From, To, Packet) end),
-                            ets:insert(?ETS_ACK_TASK, {SYNCID, TPid});
-                        true ->
-                            skip
-                    end;
-                _ ->
-                    skip
-            end
-    end.
 
+receive_ack(SYNCID, From, To, Packet) ->
+    Pid = erlang:spawn(fun()-> ack_task(SYNCID, From, To, Packet) end),
+    ets:insert(?ETS_ACK_TASK, {SYNCID, Pid}).
 
 
 
@@ -670,7 +655,7 @@ del_message(SYNCID, User) ->
 get_offline_msg(User) ->
     {ok, NormalList} = get_normal_msg(User),
     {ok, GroupList} = get_group_msg(User),
-    {ok, lists:append(NormalList, GroupList)}.
+    {ok, lists:append(NormalList, lists:reverse(GroupList))}.
 
 
 get_normal_msg(User) ->

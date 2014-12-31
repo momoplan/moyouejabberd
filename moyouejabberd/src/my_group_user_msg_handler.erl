@@ -5,6 +5,8 @@
 -module(my_group_user_msg_handler).
 
 -include("ejabberd.hrl").
+-include("aa_data.hrl").
+-include("jlib.hrl").
 
 -behaviour(gen_server).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
@@ -16,9 +18,10 @@
 %% ====================================================================
 -export([start/0,
          store_msg/4,
-         get_offline_msg/3,
+         get_offline_msg/4,
          init_user_group_info/3,
-         update_user_group_info/4
+         update_user_group_info/4,
+         delete_group_msg/3
         ]).
 
 
@@ -38,8 +41,8 @@ start() ->
 store_msg(Pid, GroupId, User, Message) ->
     gen_server:call(Pid, {store_msg, GroupId, User, Message}).
 
-get_offline_msg(Pid, GroupId, Seq) ->
-    gen_server:call(Pid, {get_offline_msg, GroupId, Seq}).
+get_offline_msg(Pid, GroupId, User, Seq) ->
+    gen_server:call(Pid, {get_offline_msg, GroupId, User, Seq}).
 
 delete_group_msg(Pid, GroupId, Sid) ->
     gen_server:cast(Pid, {delete_group_msg, GroupId, Sid}).
@@ -90,14 +93,23 @@ init([]) ->
 
 
 
-handle_call({get_offline_msg, GroupId, Seq}, _From, State) ->
+handle_call({get_offline_msg, GroupId, User, Seq}, _From, State) ->
     CurrentSeq = get_id_seq(GroupId) - 1,
     Msgs = lists:foldl(fun(X, Acc) ->
                                case mnesia:dirty_read(group_message, id_prefix(GroupId) ++ integer_to_list(X)) of
                                    [] ->
                                        Acc;
                                    [Data] ->
-                                       [Data | Acc]
+                                       
+                                       Packet = Data#group_msg.packet,
+                                       From = Data#group_msg.from,
+                                       Id = Data#group_msg.id,
+                                       case User of
+                                           From  ->
+                                               Acc;
+                                           _ ->
+                                               [#user_msg{id = Id, from = From, to = User, packat = Packet} | Acc]
+                                       end
                                end
                        end, [], lists:seq(Seq + 1, CurrentSeq)),
     {reply, {ok, Msgs}, State};
@@ -107,11 +119,21 @@ handle_call({store_msg, GroupId, User, Packet}, _From, State) ->
     ExpireTime = Now + 1 * 24 *3600,
     Seq = get_id_seq(GroupId),
     Id = id_prefix(GroupId) ++ integer_to_list(Seq),
+    {Tag, "message", Attr, Body} = Packet,
+    Attr1 = case lists:keysearch("id", 1, Attr) of
+                false ->
+                    [{"id", Id} | Attr];
+                _ ->
+                    lists:keyreplace("id", 1, Attr, {"id", Id})
+            end,
+    Attr2 = lists:append(Attr1, [{"groupid", GroupId}]),
+    Attr3 = lists:append(Attr2, [{"g","0"}]),
+    Packet1 = {Tag, "message", Attr3, Body},
     Data = #group_msg{
         id = Id,
         group_id = GroupId,
         from = User,
-        packet = Packet,
+        packet = Packet1,
         timestamp = Now,
         expire_time = ExpireTime,
         score = index_score()},
@@ -160,7 +182,8 @@ handle_cast({update_user_group_info, GroupId, User, Seq}, State) ->
                     GroupInfo1 = GroupInfo#user_group_info{group_info_list = [{GroupId, Seq} | GroupInfoList]},
                     mnesia:dirty_write(user_group_info, GroupInfo1);
                 _ ->
-                    lists:keyreplace(GroupId, 1, GroupInfoList, {GroupId, Seq})
+                    GroupInfo1 = GroupInfo#user_group_info{group_info_list = lists:keyreplace(GroupId, 1, GroupInfoList, {GroupId, Seq})},
+                    mnesia:dirty_write(user_group_info, GroupInfo1)
             end
     end,
     {noreply, State};

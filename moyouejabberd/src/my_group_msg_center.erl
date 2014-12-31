@@ -45,30 +45,32 @@ list() ->
 
 
 get_offline_msg(User) ->
-    case mnesia:dirty_read(user_group_info, User) of
+    User1 = format_user_data(User),
+    case mnesia:dirty_read(user_group_info, User1) of
         [] ->
             {ok, []};
         [GroupInfo] ->
-            Msgs = lists:fold(fun({GroupId, Seq}, Acc) ->
-                                      {ok, Msg1} = case ets:lookup(my_group_msgpid_info, GroupId) of
-                                                       [] ->
-                                                           {ok, Pid} = gen_server:call(?MODULE, {attach_new_pid, GroupId}),
-                                                           sync_deliver_task(get_offline_msg, Pid, GroupId, {GroupId, Seq});
-                                                       [{GroupId, Pid}] ->
-                                                           sync_deliver_task(get_offline_msg, Pid, GroupId, {GroupId, Seq})
-                                                   end,
-                                      lists:append(Acc, Msg1)
-                              end, [], GroupInfo#user_group_info.group_info_list),
+            Msgs = lists:foldl(fun({GroupId, Seq}, Acc) ->
+                                       {ok, Msg1} = case ets:lookup(my_group_msgpid_info, GroupId) of
+                                                        [] ->
+                                                            {ok, Pid} = gen_server:call(?MODULE, {attach_new_pid, GroupId}),
+                                                            sync_deliver_task(get_offline_msg, Pid, GroupId, {GroupId, User1, Seq});
+                                                        [{GroupId, Pid}] ->
+                                                            sync_deliver_task(get_offline_msg, Pid, GroupId, {GroupId, User1, Seq})
+                                                    end,
+                                       lists:append(Acc, Msg1)
+                               end, [], GroupInfo#user_group_info.group_info_list),
             {ok, Msgs}
     end.
 
 update_user_group_info(User, GroupId, Seq) ->
+    User1 = format_user_data(User),
     case ets:lookup(my_group_msgpid_info, GroupId) of
         [] ->
             {ok, Pid} = gen_server:call(?MODULE, {attach_new_pid, GroupId}),
-            sync_deliver_task(update_user_group_info, Pid, GroupId, {User, GroupId, Seq});
+            sync_deliver_task(update_user_group_info, Pid, GroupId, {User1, GroupId, Seq});
         [{GroupId, Pid}] ->
-            sync_deliver_task(update_user_group_info, Pid, GroupId, {User, GroupId, Seq})
+            sync_deliver_task(update_user_group_info, Pid, GroupId, {User1, GroupId, Seq})
     end.
 
 delete_group_msg(GroupId, Sid) ->
@@ -81,21 +83,23 @@ delete_group_msg(GroupId, Sid) ->
     end.
 
 init_user_group_info(User, GroupId) ->
+    User1 = format_user_data(User),
     case ets:lookup(my_group_msgpid_info, GroupId) of
         [] ->
             {ok, Pid} = gen_server:call(?MODULE, {attach_new_pid, GroupId}),
-            sync_deliver_task(init_user_group_info, Pid, GroupId, {User, GroupId});
+            sync_deliver_task(init_user_group_info, Pid, GroupId, {User1, GroupId});
         [{GroupId, Pid}] ->
-            sync_deliver_task(init_user_group_info, Pid, GroupId, {User, GroupId})
+            sync_deliver_task(init_user_group_info, Pid, GroupId, {User1, GroupId})
     end.
 
 store_message(User, GroupId, Packet) ->
+    User1 = format_user_data(User),
     case ets:lookup(my_group_msgpid_info, GroupId) of
         [] ->
             {ok, Pid} = gen_server:call(?MODULE, {attach_new_pid, GroupId}),
-            sync_deliver_task(store_msg, Pid, GroupId, {GroupId, User, Packet});
+            sync_deliver_task(store_msg, Pid, GroupId, {GroupId, User1, Packet});
         [{GroupId, Pid}] ->
-            sync_deliver_task(store_msg, Pid, GroupId, {GroupId, User, Packet})
+            sync_deliver_task(store_msg, Pid, GroupId, {GroupId, User1, Packet})
     end.
 
 
@@ -107,6 +111,10 @@ create_or_copy_table(TableName, Opts, Copy) ->
         _ ->
             skip
     end.
+
+
+format_user_data(Jid) ->
+    Jid#jid{resource = [], lresource = []}.
 
 %% ====================================================================
 %% Behavioural functions 
@@ -224,8 +232,8 @@ deliver(update_user_group_info, Pid, {User, GroupId, Seq}) ->
     my_group_user_msg_handler:update_user_group_info(Pid, GroupId, User, Seq);
 
 
-deliver(get_offline_msg, Pid, {GroupId, Seq}) ->
-    my_group_user_msg_handler:get_offline_msg(Pid, GroupId, Seq);
+deliver(get_offline_msg, Pid, {GroupId, User, Seq}) ->
+    my_group_user_msg_handler:get_offline_msg(Pid, GroupId, User, Seq);
 
 deliver(delete_group_msg, Pid, {GroupId, Sid}) ->
     my_group_user_msg_handler:delete_group_msg(Pid, GroupId, Sid).
