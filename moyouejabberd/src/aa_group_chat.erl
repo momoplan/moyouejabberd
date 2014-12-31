@@ -109,7 +109,7 @@ remove_group(Gid)->
                      none ->
                          ok;
                      Node ->
-                         rpc:cast(Node, my_group_msg_center, clear_g, [Uid, Gid])
+                         rpc:cast(Node, my_group_msg_center, clear_user_group_info, [Uid, Gid])
                  end
              end || Uid <- Members]
     end,
