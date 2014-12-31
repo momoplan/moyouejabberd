@@ -84,22 +84,36 @@ append_user(Gid,Uid)->
 	end,
 	ok.
 remove_user(Gid,Uid)->
-	?DEBUG("remove user ~p from ~p", [Uid, Gid]),
-	case mnesia:dirty_read(?GOUPR_MEMBER_TABLE, Gid) of
-		[] ->
-			skip;
-		[#group_members{members = Members}] ->
-			NewMembers = lists:delete(Uid, Members),
-			?DEBUG("remove sucess", []),
-			mnesia:dirty_write(?GOUPR_MEMBER_TABLE, #group_members{gid = Gid, members = NewMembers});
-		_ ->
-			skip
-	end,
-	?DEBUG("remove over", []),
-	ok.
+    case mnesia:dirty_read(?GOUPR_MEMBER_TABLE, Gid) of
+        [] ->
+            skip;
+        [#group_members{members = Members}] ->
+            NewMembers = lists:delete(Uid, Members),
+            mnesia:dirty_write(?GOUPR_MEMBER_TABLE, #group_members{gid = Gid, members = NewMembers}),
+            case aa_hookhandler:get_group_data_node() of
+                none ->
+                    ok;
+                Node ->
+                    rpc:cast(Node, my_group_msg_center, clear_user_group_info, [Uid, Gid])
+            end;
+        _ ->
+            skip
+    end.
 remove_group(Gid)->
-	mnesia:dirty_delete(?GOUPR_MEMBER_TABLE, Gid),
-	ok.
+    case mnesia:dirty_read(?GOUPR_MEMBER_TABLE, Gid) of
+        [] ->
+            skip;
+        [#group_members{members = Members}] ->
+            [begin
+                 case aa_hookhandler:get_group_data_node() of
+                     none ->
+                         ok;
+                     Node ->
+                         rpc:cast(Node, my_group_msg_center, clear_g, [Uid, Gid])
+                 end
+             end || Uid <- Members]
+    end,
+    mnesia:dirty_delete(?GOUPR_MEMBER_TABLE, Gid).
 
 %% ====================================================================
 %% Behavioural functions 

@@ -28,7 +28,8 @@
     rlcfg/0,
     stop/0,
     get_offline_msg/1,
-    reinit_pushpids/0
+    reinit_pushpids/0,
+    get_group_data_node/0
 	]).
 
 start_link() ->
@@ -335,7 +336,6 @@ send_message_to_user(#jid{user=FU, server = Domain} = From, #jid{user = ToUser} 
                     receive_ack(SYNCID, From, To, Packet)
             end;
         MT=:="msgStatus", ToUser =/= "messageack" ->
-            ?INFO_MSG("ack from : ~p, id : ~p~n",[From, SRC_ID_STR]),
             case if_group_msg(SRC_ID_STR) of
                 true ->
                     [_, GroupId, Seq] = re:split(SRC_ID_STR, "_", [{return, list}]),
