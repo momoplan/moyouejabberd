@@ -110,7 +110,14 @@ init([]) ->
 
 
 handle_call({get_offline_msg, GroupId, Seq, User}, _From, State) ->
-    CurrentSeq = get_id_seq(GroupId) - 1,
+    CurrentSeq = get_current_seq(GroupId),
+    %%最多返还20条离线群组数据
+    List = if
+               CurrentSeq - Seq > 20 ->
+                   lists:seq(CurrentSeq - 20 + 1, CurrentSeq);
+               true ->
+                   lists:seq(Seq + 1, CurrentSeq)
+           end,
     Msgs = lists:foldl(fun(X, Acc) ->
                                case mnesia:dirty_read(group_message, id_prefix(GroupId) ++ integer_to_list(X)) of
                                    [] ->
@@ -126,7 +133,7 @@ handle_call({get_offline_msg, GroupId, Seq, User}, _From, State) ->
                                                [#user_msg{id = Id, from = From, to = User, packat = Packet} | Acc]
                                        end
                                end
-                       end, [], lists:seq(Seq + 1, CurrentSeq)),
+                       end, [], List),
     {reply, {ok, Msgs}, State};
 
 handle_call({get_offline_msg, User}, _From, State) ->
@@ -166,6 +173,7 @@ handle_call({store_msg, GroupId, User, Packet}, _From, State) ->
         score = index_score()},
     mnesia:dirty_write(group_message, Data),
     mnesia:dirty_write(group_id_seq, #group_id_seq{group_id = GroupId, sequence = Seq}),
+    my_group_msg_center:update_user_group_info(User, GroupId, Seq),
     {reply, {ok, Id}, State};
 
 handle_call(_Request, _From, State) ->
