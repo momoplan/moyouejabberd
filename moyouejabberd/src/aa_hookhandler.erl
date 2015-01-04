@@ -224,6 +224,7 @@ get_group_members(GroupId, Domain) ->
 
 
 user_send_packet_handler(#jid{server = Domain}=From, To, Packet) ->
+    ?INFO_MSG("user_send_packet_handler From : ~p~n, To : ~p~n, Packet : ~p~n",[From, To, Packet]),
     try
         case Packet of
             {Tag, "message", Attr, Body} ->
@@ -403,12 +404,13 @@ handle_cast({server_ack, #jid{server=FD}, _To, Packet},State)->
     MT = case dict:is_key("msgtype",D) of true-> dict:fetch("msgtype",D); _-> "" end,
     SRC_ID_STR = case dict:is_key("id", D) of true -> dict:fetch("id", D); _ -> "" end,
     Sid = case dict:is_key("server_id", D) of true -> dict:fetch("server_id", D); _ -> "" end,
+    From = dict:fetch("from", D),
     if ( (MT=:="normalchat") or (MT=:="groupchat") ) ->
             case dict:is_key("from", D) of
                 true ->
                     Attributes = [
                         {"id",get_id()},
-                        {"to",dict:fetch("from", D)},
+                        {"to", From},
                         {"from","messageack@"++Domain},
                         {"type","normal"},
                         {"msgtype",""},
@@ -428,9 +430,10 @@ handle_cast({server_ack, #jid{server=FD}, _To, Packet},State)->
                     TT = jlib:string_to_jid(xml:get_tag_attr_s("to", Answer)),
                     case catch ejabberd_router:route(FF, TT, Answer) of
                         ok ->
+                            ?INFO_MSG("server_ack successed, SRC_ID_STR : ~p, From : ~p~n", [SRC_ID_STR, From]),
                             answer;
                         ERROR ->
-                            ?ERROR_MSG("server_ack failed, SRC_ID_STR : ~p, Error : ~p~n", [SRC_ID_STR, ERROR])
+                            ?ERROR_MSG("server_ack failed, SRC_ID_STR : ~p, From : ~p, Error : ~p~n", [SRC_ID_STR, From, ERROR])
                     end;
                 _ ->
                     skip
