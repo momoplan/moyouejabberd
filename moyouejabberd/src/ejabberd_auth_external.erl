@@ -52,8 +52,8 @@
 %%%----------------------------------------------------------------------
 %%% API
 %%%----------------------------------------------------------------------
-start(Host) ->
-	inets:start().
+start(_Host) ->
+    inets:start().
 
 check_cache_last_options(Server) ->
     %% if extauth_cache is enabled, then a mod_last module must also be enabled
@@ -126,44 +126,8 @@ get_password_s(User, Server) ->
     end.
 
 %% @spec (User, Server) -> true | false | {error, Error}
-is_user_exists(User, Server) ->
-	true.
-%%	这里没必要验证吧
-%%	?INFO_MSG("########~p AUTH__Server=~p~n",[is_user_exists,Server]),
-%%	HTTPServer =  ejabberd_config:get_local_option({http_server,Server}),
-%%	HTTPService = ejabberd_config:get_local_option({http_server_service_client,Server}),
-%%	HTTPTarget = string:concat(HTTPServer,HTTPService),
-%%	HTTPHead = "application/x-www-form-urlencoded",
-%%	%% 2013-10-22 : 新的请求协议如下，此处不必关心，success=true 即成功
-%%	%% INPUT {"username":"xxx"}
-%%	%% OUTPUT {"success":true,"entity":true}
-%%	UID = list_to_binary(User),
-%%	%% 2014-01-22 : 回调时增加域名和用户名
-%%	DOMAIN = list_to_binary(Server),
-%%	{Service,Method,Channel} = {list_to_binary("service.uri.pet_sso"),list_to_binary("isUsernameInuse"),list_to_binary("9")},
-%%	PostBody = {obj,[{"service",Service},{"method",Method},{"channel",Channel},{"params",{obj,[{"username",UID},{"domain",DOMAIN}]}}]},	
-%%	Form = "body="++rfc4627:encode(PostBody),
-%%	?INFO_MSG("##########################~p~n HTTP_TARGET=~p~nHTTP_PARAM=~p~n",[is_user_exists,HTTPTarget,Form]),
-%%	case httpc:request(post,{HTTPTarget,[],HTTPHead, Form},[],[]) of   
-%%        	{ok, {_,_,Body}} -> 
-%%			case rfc4627:decode(Body) of
-%%				{ok,Obj,_} -> 
-%%					case rfc4627:get_field(Obj,"success") of
-%%						{ok,true} ->
-%%							true;
-%%						{ok,false} ->
-%%							{ok,Entity} = rfc4627:get_field(Obj,"entity"),
-%%							?INFO_MSG("liangc-login error: ~p~n",[binary_to_list(Entity)]),
-%%							false;
-%%						_ ->
-%%							false
-%%					end;
-%%				_ -> 
-%%					false
-%%			end ;
-%%        	{error, Reason} ->
-%%			?INFO_MSG("error cause ~p~n",[Reason])  
-%%    	end.
+is_user_exists(_User, _Server) ->
+    true.
 
 remove_user(User, Server) ->
     case extauth:remove_user(User, Server) of
@@ -200,52 +164,50 @@ get_cache_option(Host) ->
 
 %% @spec (User, Server, Password) -> true | false
 check_password_extauth(User, Server, Password) ->
-	case ejabberd_config:get_local_option({auth,Server}) of 
-		false ->
-			true;
-		_->
-			check_password_extauth(do,User,Server,Password)
-	end.
-check_password_extauth(do,User, Server, Password) ->
-%% 	true.
-	?INFO_MSG("##########################~p AUTH_Server=~p~nUser=~p~n",[check_password_extauth,Server,User]),
-	 HTTPServer =  ejabberd_config:get_local_option({http_server,Server}),
-	 HTTPService = ejabberd_config:get_local_option({http_server_service_client,Server}),
-	 HTTPTarget = string:concat(HTTPServer,HTTPService),
-	 HTTPHead = "application/x-www-form-urlencoded",
-	 %% 2013-10-22 : 新的请求协议如下,其中输出的 entity 属性中带有 token等信息，此处不必关心，success=true 即成功
-	 %% INPUT {"service":"service.uri.pet_sso","method":"token","channel":"9","token":PWD}
-	 %% OUTPUT {"success":true,"entity":{}}
-	 {PWD} = {list_to_binary(Password)},
-	 %% 2014-01-22 : 回调时增加域名和用户名
-	 UID = list_to_binary(User),
-	 DOMAIN = list_to_binary(Server),
-	 {Service,Method,Channel} = {list_to_binary("service.uri.pet_sso"),list_to_binary("token"),list_to_binary("9")},
-	 PostBody = {obj,[{"service",Service},{"method",Method},{"channel",Channel},{"token",PWD},{"params",{obj,[{"username",UID},{"domain",DOMAIN}]}} ]},	
-	 Form = "body="++rfc4627:encode(PostBody),
-	 ?INFO_MSG("##########################~p~nHTTP_TARGET=~p~nFORM=~p~n",[check_password_extauth,HTTPTarget,Form]),
-    	 case httpc:request(post,{HTTPTarget,[],HTTPHead, Form},[],[]) of   
-         	{ok, {_,_,Body}}-> 
-	 		case rfc4627:decode(Body) of 
-	 			{ok,Obj,_Re} -> 
-	 				case rfc4627:get_field(Obj,"success") of 
-	 					{ok,true} -> 
-	 						true;
-	 					{ok,false} ->
-	 						{ok,Entity} = rfc4627:get_field(Obj,"entity"),
-	 						?INFO_MSG("liangc-login error: ~p~n",[binary_to_list(Entity)]),
-	 						false;
-	 					_ -> 
-	 						false
-	 				end;
-	 			{error, Reason}->
-	 				?INFO_MSG("error cause ~p~n",[Reason]),
-					false
-	 		end ;
-         	{error, Reason}->
-	 		?INFO_MSG("error cause ~p~n",[Reason]),
-			false
-    	 end.
+    case ejabberd_config:get_local_option({auth, Server}) of
+        false ->
+            true;
+        _ ->
+            check_password_extauth(do, User, Server, Password)
+    end.
+check_password_extauth(do, User, Server, Password) ->
+    %% 	true.
+    HTTPServer =  ejabberd_config:get_local_option({http_server,Server}),
+    HTTPService = ejabberd_config:get_local_option({http_server_service_client,Server}),
+    HTTPTarget = string:concat(HTTPServer,HTTPService),
+    HTTPHead = "application/x-www-form-urlencoded",
+    %% 2013-10-22 : 新的请求协议如下,其中输出的 entity 属性中带有 token等信息，此处不必关心，success=true 即成功
+    %% INPUT {"service":"service.uri.pet_sso","method":"token","channel":"9","token":PWD}
+    %% OUTPUT {"success":true,"entity":{}}
+    {PWD} = {list_to_binary(Password)},
+    %% 2014-01-22 : 回调时增加域名和用户名
+    UID = list_to_binary(User),
+    DOMAIN = list_to_binary(Server),
+    {Service,Method,Channel} = {list_to_binary("service.uri.pet_sso"),list_to_binary("token"),list_to_binary("9")},
+    PostBody = {obj,[{"service",Service},{"method",Method},{"channel",Channel},{"token",PWD},{"params",{obj,[{"username",UID},{"domain",DOMAIN}]}} ]},
+    Form = "body="++rfc4627:encode(PostBody),
+    case httpc:request(post,{HTTPTarget,[],HTTPHead, Form},[],[]) of
+        {ok, {_,_,Body}}->
+            case rfc4627:decode(Body) of
+                {ok,Obj,_Re} ->
+                    case rfc4627:get_field(Obj,"success") of
+                        {ok,true} ->
+                            true;
+                        {ok,false} ->
+                            {ok,Entity} = rfc4627:get_field(Obj,"entity"),
+                            ?ERROR_MSG("check_password_extauth failed, User : ~p, Server : ~p, Password :~p, error: ~p~n",[User, Server, Password, Entity]),
+                            false;
+                        _ ->
+                            false
+                    end;
+                {error, Reason}->
+                    ?ERROR_MSG("check_password_extauth failed, User : ~p, Server : ~p, Password :~p, error: ~p~n",[User, Server, Password, Reason]),
+                    false
+            end ;
+        {error, Reason}->
+            ?ERROR_MSG("check_password_extauth failed, User : ~p, Server : ~p, Password :~p, error: ~p~n",[User, Server, Password, Reason]),
+            false
+    end.
 
 %% @spec (User, Server, Password) -> true | false
 try_register_extauth(User, Server, Password) ->

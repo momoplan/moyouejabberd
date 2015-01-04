@@ -22,7 +22,6 @@
 -export([
     start_link/0,
     user_send_packet_handler/3,
-    offline_message_hook_handler/3,
     send_message_to_user/3,
     send_group_msg_to_user/4,
     rlcfg/0,
@@ -33,13 +32,12 @@
 	]).
 
 start_link() ->
-	gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
+    gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 stop() ->
-	lists:foreach(
-	  fun(Host) ->
-			  ejabberd_hooks:delete(user_send_packet,Host,?MODULE, user_send_packet_handler ,80),
-			  ejabberd_hooks:delete(offline_message_hook, Host, ?MODULE, offline_message_hook_handler, 45)
+    lists:foreach(
+        fun(Host) ->
+                ejabberd_hooks:delete(user_send_packet,Host,?MODULE, user_send_packet_handler ,80)
 
 	  end, ?MYHOSTS),
     exit(whereis(?MODULE), stop),
@@ -56,57 +54,48 @@ rlcfg() ->
 %% 如果列表中有多个要提取的关键字，我就把他们组合成一个 List
 %% 大部分时间 List 只有一个元素
 feach_message([Element|Message],List) ->
-	case Element of 
-		{xmlelement,"body",_,_} ->
-			feach_message(Message,[get_text_message_form_packet_result(Element)|List]);
-		_ ->
-			feach_message(Message,List)
-	end;
+    case Element of
+        {xmlelement,"body",_,_} ->
+            feach_message(Message,[get_text_message_form_packet_result(Element)|List]);
+        _ ->
+            feach_message(Message,List)
+    end;
 feach_message([],List) ->
-	List.
+    List.
 
 %% 获取消息包中的文本消息，用于离线消息推送服务
 get_text_message_from_packet( Packet )->
-	{xmlelement,"message",_,Message } = Packet,
-	%% Message 结构不固定，需要遍历
-	List = feach_message(Message,[]),
-	?DEBUG("~p ==== ~p ",[liangc_debug_offline_message,List]),
-	List.
+    {xmlelement,"message",_,Message } = Packet,
+    %% Message 结构不固定，需要遍历
+    List = feach_message(Message,[]),
+    List.
 
 %% 获取消息包中的文本消息，用于离线消息推送服务
 get_text_message_form_packet_result( Body )->
-	{xmlelement,"body",_,List} = Body,
-	Res = lists:map(fun({_,V})-> binary_to_list(V) end,List),                                       
-	ResultMessage = binary_to_list(list_to_binary(Res)), 
-	ResultMessage.	
-
-%% 离线消息处理器
-%% 钩子回调
-offline_message_hook_handler(From, To, Packet) ->
-    gen_server:cast(?MODULE, {deal_offline_msg, From, To, Packet}),
-    stop.
+    {xmlelement,"body",_,List} = Body,
+    Res = lists:map(fun({_,V})-> binary_to_list(V) end,List),
+    ResultMessage = binary_to_list(list_to_binary(Res)),
+    ResultMessage.
 
 deal_offline_msg(From, To, Packet) ->
-	try
-		?DEBUG("FFFFFFFFFFFFFFFFF===From=~p~nTo=~p~nPacket=~p~n",[From, To, Packet]),
-		{xmlelement,"message",Header,_ } = Packet,
-
-		D = dict:from_list(Header),
-		V = dict:fetch("msgtype", D),
-		case V of
-			"msgStatus" ->
-				ok;
-			_->
-				MID = case dict:is_key("id", D) of
-						  true ->
-							  dict:fetch("id", D);
-						  _ -> ""
-					  end,
-				send_offline_message( From, To, Packet, MID,V )
-		end
-	catch
-		_:_ -> ok
-	end.
+    try
+        {xmlelement,"message",Header,_ } = Packet,
+        D = dict:from_list(Header),
+        V = dict:fetch("msgtype", D),
+        case V of
+            "msgStatus" ->
+                ok;
+            _->
+                MID = case dict:is_key("id", D) of
+                          true ->
+                              dict:fetch("id", D);
+                          _ -> ""
+                      end,
+                send_offline_message( From, To, Packet, MID,V )
+        end
+    catch
+        _:_ -> ok
+    end.
 
 %% 将 Packet 中的 Text 消息 Post 到指定的 Http 服务
 %% IOS 消息推送功能
@@ -147,37 +136,35 @@ send_offline_message(From ,To ,Packet,MID,MsgType,N) when N < 3 ->
                   ]},
     Form = "body="++http_uri:encode( rfc4627:encode(ParamObj) ),
     try
-        ?DEBUG("MMMMMMMMMMMMMMMMM===Form=~p~n",[Form]),
         case httpc:request(post,{ HTTPTarget ,[], ?HTTP_HEAD , Form },[],[] ) of
             {ok, {_,_,Body}} ->
                 case rfc4627:decode(Body) of
                     {ok,Obj,_Re} ->
                         case rfc4627:get_field(Obj,"success") of
                             {ok,false} ->
-                                {ok,Entity} = rfc4627:get_field(Obj,"entity"),
-                                ?INFO_MSG("liangc-push-msg error: ~p~n",[binary_to_list(Entity)]);
+                                rfc4627:get_field(Obj,"entity");
                             _ ->
                                 ok
                         end;
                     Other ->
-                        ?INFO_MSG("liangc_push_msg_error_id=~p ; Other=~p",[MID,Other]),
+                        ?ERROR_MSG("send_offline_message failed, msgId : ~p, reason : ~p~n",[MID, Other]),
                         false
                 end ;
             {error, Reason} ->
-                ?INFO_MSG("[ERROR] cause N=~p~nErr=~p~nForm=~p~n",[N,Reason,Form]),
+                ?ERROR_MSG("send_offline_message http failed, msgId : ~p, reason : ~p~n",[MID, Reason]),
                 timer:sleep(200),
-                send_offline_message(From,To,Packet,MID,MsgType,N+1)
+                send_offline_message(From,To,Packet,MID,MsgType,N + 1)
         end
     catch
         _:_ ->
             Err0 = erlang:get_stacktrace(),
-            ?ERROR_MSG("[ERROR] offline_message_hook_handler N=~p~nErr=~p~nForm=~p~n",[N,Err0,Form]),
+            ?ERROR_MSG("send_offline_message unknow failed, MsgId : ~p, reason : ~p~n",[MID, Err0]),
             timer:sleep(200),
-            send_offline_message(From,To,Packet,MID,MsgType,N+1)
+            send_offline_message(From,To,Packet,MID,MsgType,N + 1)
     end,
     ok;
-send_offline_message(From ,To ,Packet,MID,MsgType,3) ->
-    ?ERROR_MSG("[ERROR] offline_message_hook_handler_lost ~p",[{From ,To ,Packet,MID,MsgType,3}]),
+send_offline_message(From ,To ,Packet,MID,MsgType, 3) ->
+    ?ERROR_MSG("send_offline_message lost ~p",[{From ,To ,Packet, MID, MsgType}]),
     ok.
 
 
@@ -200,20 +187,20 @@ get_user_list_by_group_id(Domain, GroupId)->
                             {ok, true} ->
                                 rfc4627:get_field(Obj, "entity");
                             Err1 ->
-                                ?INFO_MSG("get_user_list_by_group_id return success failed : ~p~n",[Err1]),
+                                ?ERROR_MSG("get_user_list_by_group_id return failed, groupId : ~p, Err : ~p~n",[GroupId, Err1]),
                                 error
                         end;
                     Error ->
-                        ?INFO_MSG("get_user_list_by_group_id DBody failed : ~p~n",[Error]),
+                        ?ERROR_MSG("get_user_list_by_group_id DBody failed, groupId : ~p, Err : ~p~n",[GroupId, Error]),
                         error
                 end ;
             {error, Reason} ->
-                ?INFO_MSG("get_user_list_by_group_id httpc:request failed Reason : ~p~n",[Reason]),
+                ?ERROR_MSG("get_user_list_by_group_id httpc:request failed, groupId : ~p, Err : ~p~n",[GroupId, Reason]),
                 error
         end
     catch
-        ErrType:ErrReason->
-            ?INFO_MSG("get_user_list_by_group_id unknow error Type : ~p Reason :~p~n", [ErrType, ErrReason]),
+        _ErrType:ErrReason->
+            ?ERROR_MSG("get_user_list_by_group_id unknow failed, groupId : ~p, Err : ~p~n", [GroupId, ErrReason]),
             error
     end.
 
@@ -258,7 +245,7 @@ user_send_packet_handler(#jid{server = Domain}=From, To, Packet) ->
     catch
         ErrType:Reason ->
             Err = erlang:get_stacktrace(),
-            ?INFO_MSG("user_send_packet_handler_error ~p:~p:> ~p",[ErrType, Reason, Err])
+            ?ERROR_MSG("user_send_packet_handler failed ~p:~p:> ~p",[ErrType, Reason, Err])
     end.
 
 route_group_msg(Packet, From, #jid{user = User, server = Domain} = To, Sid, GroupId) ->
@@ -279,7 +266,7 @@ route_group_msg(Packet, From, #jid{user = User, server = Domain} = To, Sid, Grou
         ok ->
             {ok, ok};
         Err ->
-            ?INFO_MSG("route_group_msg failed, err : ~p~n",[Err]),
+            ?ERROR_MSG("route_group_msg failed, From : ~p, To : ~p, Packet : ~p, err : ~p~n",[From, To, RPacket, Err]),
             {error, Err}
     end.
 
@@ -304,10 +291,12 @@ send_group_msg_to_user(#jid{user = User, server = Domain} = From, GroupId, Sid, 
                      end || Member <- Members];
                 _ ->
                     %%用户不在此群，删除此消息
+                    ?ERROR_MSG("send_group_msg_to_user failed, From : ~p does not exist this group : ~p~n", [From, GroupId]),
                     delete_group_msg(GroupId, Sid)
             end;
         _ ->
             %%获取群成员报错，删除此消息
+            ?ERROR_MSG("send_group_msg_to_user failed, group : ~p does not exist~n", [GroupId]),
             delete_group_msg(GroupId, Sid)
     end.
 
@@ -374,19 +363,14 @@ receive_ack(SYNCID, From, To, Packet) ->
 }).
 
 init([]) ->
-	?DEBUG("INIT_START >>>>>>>>>>>>>>>>>>>>>>>> ~p",[liangchuan_debug]),  
-	lists:foreach(
-	  fun(Host) ->
-			  ?INFO_MSG("#### _begin Host=~p~n",[Host]),
-			  ejabberd_hooks:add(user_send_packet,Host,?MODULE, user_send_packet_handler ,80),
-			  ejabberd_hooks:add(offline_message_hook, Host, ?MODULE, offline_message_hook_handler, 45),
-			  ?INFO_MSG("#### offline_message_hook Host=~p~n",[Host])
-
-	  end, ?MYHOSTS),
-	%% 2014-3-4 : 在这个 HOOK 初始化时，启动一个thrift 客户端，同步数据到缓存服务器
-	%% 启动5281端口，接收内网回调
-	aa_inf_server:start(),
-	State = #state{},
+    lists:foreach(
+        fun(Host) ->
+                ejabberd_hooks:add(user_send_packet,Host,?MODULE, user_send_packet_handler ,80)
+        end, ?MYHOSTS),
+    %% 2014-3-4 : 在这个 HOOK 初始化时，启动一个thrift 客户端，同步数据到缓存服务器
+    %% 启动5281端口，接收内网回调
+    aa_inf_server:start(),
+    State = #state{},
 	
 	ets:new(?ETS_ACK_TASK, [named_table, public, set]),
 	
@@ -445,8 +429,8 @@ handle_cast({server_ack, #jid{server=FD}, _To, Packet},State)->
                     case catch ejabberd_router:route(FF, TT, Answer) of
                         ok ->
                             answer;
-                        _ERROR ->
-                            ?INFO_MSG("Answer ::::> error=~p ", [_ERROR] )
+                        ERROR ->
+                            ?ERROR_MSG("server_ack failed, SRC_ID_STR : ~p, Error : ~p~n", [SRC_ID_STR, ERROR])
                     end;
                 _ ->
                     skip
@@ -504,7 +488,7 @@ ack_task({ack,ID})->
     catch
         _:_->
             Error = erlang:get_stacktrace(),
-            ?INFO_MSG("DO_ACK_TASK_ID=~p ; M=~p ; ERROR=~p.",[ID,ack,Error]),
+            ?ERROR_MSG("DO_ACK_TASK_ID=~p ; M=~p ; ERROR=~p.",[ID, ack, Error]),
             ack_err
     end.
 
@@ -600,7 +584,7 @@ store_group_message(From, GroupId, Packet) ->
         Node ->
             case rpc:call(Node, my_group_msg_center, store_message, [From, GroupId, Packet]) of
                 {badrpc, Reason} ->
-                    ?INFO_MSG("store_group_message failed, Node : ~p, User : ~p, Packet : ~p Reason : ~p~n",[Node, From, Packet, Reason]),
+                    ?ERROR_MSG("store_group_message failed, Node : ~p, User : ~p, Packet : ~p Reason : ~p~n",[Node, From, Packet, Reason]),
                     throw({store_message_error, Reason});
                 {ok, Data} ->
                     Data
@@ -665,7 +649,7 @@ get_normal_msg(User) ->
         Node ->
             case rpc:call(Node, my_msg_center, get_offline_msg, [User]) of
                 {badrpc, Reason} ->
-                    ?INFO_MSG("get_normal_msg failed, Node : ~p, User : ~p, Reason : ~p~n",[Node, User, Reason]),
+                    ?ERROR_MSG("get_normal_msg failed, Node : ~p, User : ~p, Reason : ~p~n",[Node, User, Reason]),
                     {ok, []};
                 Result ->
                     Result
@@ -680,7 +664,7 @@ get_group_msg(User) ->
         Node ->
             case rpc:call(Node, my_group_msg_center, get_offline_msg, [User]) of
                 {badrpc, Reason} ->
-                    ?INFO_MSG("get_group_msg failed, Node : ~p, User : ~p, Reason : ~p~n",[Node, User, Reason]),
+                    ?ERROR_MSG("get_group_msg failed, Node : ~p, User : ~p, Reason : ~p~n",[Node, User, Reason]),
                     {ok, []};
                 Result ->
                     Result
@@ -693,7 +677,7 @@ get_group_data_node() ->
         [Node|_] ->
             Node;
         Reason ->
-            ?INFO_MSG("get_group_data_node failed, Reason : ~p~n",[Reason]),
+            ?ERROR_MSG("get_group_data_node failed, Reason : ~p~n",[Reason]),
             none
     end.
 

@@ -42,28 +42,26 @@ start_link() ->
 %% 		  end).
 
 reload_group_members() ->
-	GroupIds = mnesia:dirty_all_keys(?GOUPR_MEMBER_TABLE),
-	[Domain|_] = ?MYHOSTS, 
-	F = fun(GroupId) ->
-			case get_user_list_by_group_id(Domain,GroupId) of 
-				{ok,UserList} ->
-					UserList1 = [binary_to_list(Usr) || Usr <- UserList],
-					Data = #group_members{gid = GroupId, members = UserList1},
-					mnesia:dirty_write(?GOUPR_MEMBER_TABLE, Data),
-					?DEBUG("###### get_user_list_by_group_id_http :::> GroupId=~p ; Roster=~p",[GroupId,UserList]),
-					{ok,UserList};
-				Err ->
-					?ERROR_MSG("ERROR=~p",[Err]),
-					mnesia:dirty_delete(?GOUPR_MEMBER_TABLE, GroupId),
-					error
-			end
+    GroupIds = mnesia:dirty_all_keys(?GOUPR_MEMBER_TABLE),
+    [Domain|_] = ?MYHOSTS,
+    F = fun(GroupId) ->
+                case get_user_list_by_group_id(Domain,GroupId) of
+                    {ok,UserList} ->
+                        UserList1 = [binary_to_list(Usr) || Usr <- UserList],
+                        Data = #group_members{gid = GroupId, members = UserList1},
+                        mnesia:dirty_write(?GOUPR_MEMBER_TABLE, Data),
+                        {ok,UserList};
+                    Err ->
+                        ?ERROR_MSG("ERROR=~p",[Err]),
+                        mnesia:dirty_delete(?GOUPR_MEMBER_TABLE, GroupId),
+                        error
+                end
 	end,
-	lists:foreach(F, GroupIds).
+    lists:foreach(F, GroupIds).
 
 route_group_msg(From,GroupId,Packet)->
-	{ok,Pid} = start(),
-	?DEBUG("###### route_group_msg_001 ::::> {From,To,Packet}=~p",[{From,GroupId,Packet}]),
-	gen_server:cast(Pid,{route_group_msg,From,GroupId,Packet}).
+    {ok,Pid} = start(),
+    gen_server:cast(Pid,{route_group_msg,From,GroupId,Packet}).
 
 %% {"service":"group_chat","method":"remove_user","params":{"domain":"test.com","gid":"123123","uid":"123123"}}
 %% "{\"method\":\"remove_user\",\"params\":{\"domain\":\"test.com\",\"gid\":\"123123\",\"uid\":\"123123\"}}"
