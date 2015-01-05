@@ -404,10 +404,10 @@ handle_cast({server_ack, #jid{server=FD}, _To, Packet},State)->
     MT = case dict:is_key("msgtype",D) of true-> dict:fetch("msgtype",D); _-> "" end,
     SRC_ID_STR = case dict:is_key("id", D) of true -> dict:fetch("id", D); _ -> "" end,
     Sid = case dict:is_key("server_id", D) of true -> dict:fetch("server_id", D); _ -> "" end,
-    From = dict:fetch("from", D),
     if ( (MT=:="normalchat") or (MT=:="groupchat") ) ->
             case dict:is_key("from", D) of
                 true ->
+                    From = dict:fetch("from", D),
                     Attributes = [
                         {"id",get_id()},
                         {"to", From},
@@ -433,7 +433,8 @@ handle_cast({server_ack, #jid{server=FD}, _To, Packet},State)->
                             ?INFO_MSG("server_ack successed, SRC_ID_STR : ~p, From : ~p~n", [SRC_ID_STR, From]),
                             answer;
                         ERROR ->
-                            ?ERROR_MSG("server_ack failed, SRC_ID_STR : ~p, From : ~p, Error : ~p~n", [SRC_ID_STR, From, ERROR])
+                            ?ERROR_MSG("server_ack failed, SRC_ID_STR : ~p, From : ~p, Error : ~p~n", [SRC_ID_STR, From, ERROR]),
+                            skip
                     end;
                 _ ->
                     skip
