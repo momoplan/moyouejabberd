@@ -39,23 +39,23 @@ change() ->
 run_all_nodes() ->
     [ start(Node) || Node <- [node()|nodes()]].
 start(Node) ->
-	spawn(fun() ->
+    spawn(fun() ->
                   rpc:call(Node,start,start,[])
-		  end).
+          end).
 
 start() ->
-	supervisor:start_child(aa_hookhandler_sup, {?MODULE, 
-												{?MODULE, start_link, []}, 
-												permanent, 
-												3000, 
-												worker, 
-												[?MODULE]}).
+    supervisor:start_child(aa_hookhandler_sup, {?MODULE,
+                                                {?MODULE, start_link, []},
+                                                permanent,
+                                                3000,
+                                                worker, 
+                                                [?MODULE]}).
 
 clean_user_msg(Uid, Domain) ->
-	NodeNameList = atom_to_list(node()),
-	RamMsgListTableName = list_to_atom(NodeNameList ++ "user_msglist"),	
-	UserJids = mnesia:dirty_all_keys(RamMsgListTableName),
-	UserJid =
+    NodeNameList = atom_to_list(node()),
+    RamMsgListTableName = list_to_atom(NodeNameList ++ "user_msglist"),
+    UserJids = mnesia:dirty_all_keys(RamMsgListTableName),
+    UserJid =
 	lists:filter(fun(#jid{user = Uid1, server = Domain1}) ->
                              if Uid == Uid1 andalso Domain == Domain1 ->
                                      true;
@@ -102,30 +102,30 @@ handle_call(cancel, _From, State) ->
 
 
 handle_call(clean, _From, State) ->
-	if State#state.clean_timer /= none ->
-		   erlang:cancel_timer(State#state.clean_timer);
-	   true ->
-		   skip
-	end,
-	Timer = erlang:send_after(?CLEAN_CYCLE, self(), ?CLEAN_MSG),
-	clean_message(),
-	{reply, ok, State#state{clean_timer = Timer}};
+    if State#state.clean_timer /= none ->
+            erlang:cancel_timer(State#state.clean_timer);
+        true ->
+            skip
+    end,
+    Timer = erlang:send_after(?CLEAN_CYCLE, self(), ?CLEAN_MSG),
+    clean_group_message(),
+    clean_message(),
+    {reply, ok, State#state{clean_timer = Timer}};
 
 handle_call(test_cfg, _From, State) ->
-	ejabberd_config:reload_config(),
-	[Domain|_] = ?MYHOSTS,
-	MsgCopyNodes = case ejabberd_config:get_local_option({mysql_config, Domain}) of
-					   undefined ->
-						   [];
-					   N ->
-						   N
-				   end,
-	{reply, {ok, MsgCopyNodes}, State};
+    ejabberd_config:reload_config(),
+    [Domain|_] = ?MYHOSTS,
+    MsgCopyNodes = case ejabberd_config:get_local_option({mysql_config, Domain}) of
+                       undefined ->
+                           [];
+                       N ->
+                           N
+                   end,
+    {reply, {ok, MsgCopyNodes}, State};
 
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
-
 
 
 handle_cast(_Msg, State) ->
@@ -135,6 +135,7 @@ handle_cast(_Msg, State) ->
 handle_info(?CLEAN_MSG, State) ->
     Timer = erlang:send_after(?CLEAN_CYCLE, self(), ?CLEAN_MSG),
     if State#state.clean_timer /= none ->
+            clean_group_message(),
             clean_message();
         true ->
             skip
@@ -159,6 +160,17 @@ code_change(_OldVsn, State, _Extra) ->
 %% Internal functions
 %% ====================================================================
 
+clean_group_message() ->
+    SelfNode = node(),
+    case catch mnesia:table_info(group_id_seq, where_to_write) of
+        [SelfNode | _] ->
+            Gids = mnesia:dirty_all_keys(group_id_seq),
+            [my_group_msg_center:dump(Gid) || Gid <- Gids];
+        _ ->
+            skip
+    end.
+
+
 clean_message() ->
     [Domain|_] = ?MYHOSTS,
     SelfNode = node(),
@@ -178,6 +190,7 @@ clean_message() ->
                  end
              end || Table <- MsgListTables]
     end.
+    
 
 clean_user_msg1([], _Num) ->
     ok;

@@ -23,7 +23,9 @@
          init_user_group_info/3,
          update_user_group_info/4,
          delete_group_msg/3,
-         clear_user_group_info/3
+         clear_user_group_info/3,
+         query_group_msg/5,
+         dump/2
         ]).
 
 
@@ -51,6 +53,12 @@ get_offline_msg(Pid, GroupId, Seq, User) ->
 
 delete_group_msg(Pid, GroupId, Sid) ->
     gen_server:cast(Pid, {delete_group_msg, GroupId, Sid}).
+
+query_group_msg(Pid, GroupId, Uid, Seq, Size) ->
+    gen_server:call(Pid, {query_group_msg, GroupId, Uid, Seq, Size}).
+
+dump(Pid, GroupId) ->
+    gen_server:cast(Pid, {dump, GroupId}).
 
 init_user_group_info(Pid, GroupId, User) ->
     gen_server:cast(Pid, {init_user_group_info, GroupId, User}).
@@ -109,11 +117,13 @@ init([]) ->
     {ok, #state{}}.
 
 
-handle_call({get_offline_msg, GroupId, Seq, User}, _From, State) ->
+handle_call({get_offline_msg, GroupId, Seq, #jid{server = Domain} = User}, _From, State) ->
     CurrentSeq = get_current_seq(GroupId),
+    %%离线消息数量
+    Number = CurrentSeq - Seq,
     %%最多返还20条离线群组数据
     List = if
-               CurrentSeq - Seq > 20 ->
+               Number > 20 ->
                    lists:seq(CurrentSeq - 20 + 1, CurrentSeq);
                Seq > CurrentSeq ->
                    %%异常，当用户序列号大于当前群的序列时，更新为当前群的序列
@@ -138,7 +148,20 @@ handle_call({get_offline_msg, GroupId, Seq, User}, _From, State) ->
                                        end
                                end
                        end, [], List),
-    {reply, {ok, Msgs}, State};
+    case Msgs of
+        [] ->
+            {reply, {ok, Msgs}, State};
+        _ ->
+            Attr = [{"groupId", GroupId},
+                    {"type", "normal"},
+                    {"msgtype", "groupMsgNumber"},
+                    {"number", integer_to_list(Number)}],
+            Packet = {xmlelement, "message", Attr, []},
+            From = #jid{user = "groupMsgNumber", server = Domain, resource = ""},
+            NumMessage = #user_msg{from = From, to = User, packat = Packet},
+            {reply, {ok, [NumMessage | Msgs]}, State}
+    end;
+    
 
 handle_call({get_offline_msg, User}, _From, State) ->
     Msgs = case mnesia:dirty_read(user_group_info, User) of
@@ -150,6 +173,40 @@ handle_call({get_offline_msg, User}, _From, State) ->
                                        lists:append(Acc, Msg1)
                                end, [], GroupInfo#user_group_info.group_info_list)
            end,
+    {reply, {ok, Msgs}, State};
+
+handle_call({query_group_msg, GroupId, Uid, Seq, Size}, _From, State) ->
+    List = if
+               Seq - Size > 0 ->
+                   lists:seq(Seq - 20, Seq - 1);
+               true ->
+                   lists:seq(1, Seq - 1)
+           end,
+    [Domain | _] = ?MYHOSTS,
+    Msgs = lists:foldl(fun(X, Acc) ->
+                               Mid = id_prefix(GroupId) ++ integer_to_list(X),
+                               case mnesia:dirty_read(group_message, Mid) of
+                                   [] ->
+                                       Sql = lists:flatten(io_lib:format("select content from group_message where mid = '~s'", [Mid])),
+                                       case catch db_sql:get_row(Sql) of
+                                           {'EXIT', Reason} ->
+                                               ?ERROR_MSG("Sql : ~p get row error, reason : ~p~n", [Sql, Reason]),
+                                               Acc;
+                                           [] ->
+                                               Acc;
+                                           [Content]  ->
+                                               {_Key, From, PacketBin} = bitstring_to_term(Content),
+                                               Packet = binary_to_term(PacketBin),
+                                               To = #jid{user = Uid, server = Domain, luser = Uid, lserver = Domain, resource = [], lresource = []},
+                                               [#user_msg{id = Mid, from = From, to = To, packat = Packet} | Acc]
+                                       end;
+                                   [Data] ->
+                                       Packet = Data#group_msg.packet,
+                                       From = Data#group_msg.from,
+                                       To = #jid{user = Uid, server = Domain, luser = Uid, lserver = Domain, resource = [], lresource = []},
+                                       [#user_msg{id = Mid, from = From, to = To, packat = Packet} | Acc]
+                               end
+                       end, [], List),
     {reply, {ok, Msgs}, State};
 
 handle_call({store_msg, GroupId, User, Packet}, _From, State) ->
@@ -184,6 +241,36 @@ handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
 
+
+handle_cast({dump, GroupId}, State) ->
+    Messages = mnesia:dirty_match_object(group_message, #group_msg{group_id = GroupId, _ = '_'}),
+    if
+        length(Messages) > 100 ->
+            CurrentSeq = get_current_seq(GroupId),
+            KeepList = [id_prefix(GroupId) ++ integer_to_list(Seq) || Seq <- lists:seq(CurrentSeq - 99, CurrentSeq)],
+            [begin
+                 case lists:member(Message#group_msg.id, KeepList) of
+                     true ->
+                         skip;
+                     _ ->
+                         Sql = "insert into group_message(`group_id`, `mid`, `content`, `createDate`) values",
+                         #group_msg{id = Key, from = From, packet = Packet, timestamp = TimeStamp} = Message,
+                         Ts = case TimeStamp of
+                                  {datetime, _} ->
+                                      0;
+                                  _ ->
+                                      TimeStamp
+                              end,
+                         Content = term_to_bitstring({Key, From, term_to_binary(Packet)}),
+                         Values = lists:flatten(io_lib:format("('~s', '~s', '~s', ~p)", [GroupId, Key, Content, Ts])),
+                         catch db_sql:execute(Sql ++ Values),
+                         mnesia:dirty_delete(group_message, Key)
+                 end
+             end || Message <- Messages];
+        true ->
+            skip
+    end,
+    {noreply, State};
 
 handle_cast({delete_group_msg, GroupId, Sid}, State) ->
     mnesia:dirty_delete(group_message, Sid),
@@ -265,3 +352,21 @@ code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 
+term_to_bitstring(Term) ->
+    erlang:list_to_bitstring(io_lib:format("~p", [Term])).
+
+bitstring_to_term(undefined) -> undefined;
+bitstring_to_term(BitString) ->
+    string_to_term(binary_to_list(BitString)).
+
+
+string_to_term(String) ->
+    case erl_scan:string(String++".") of
+        {ok, Tokens, _} ->
+            case catch erl_parse:parse_term(Tokens) of
+                {ok, Term} -> Term;
+                _Err -> undefined
+            end;
+        _Error ->
+            undefined
+    end.

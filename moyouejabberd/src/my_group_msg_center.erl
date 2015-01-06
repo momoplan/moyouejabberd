@@ -33,7 +33,9 @@
          delete_group_msg/2,
          get_offline_msg/1,
          get_offline_msg/3,
-         clear_user_group_info/2
+         query_group_msg/4,
+         clear_user_group_info/2,
+         dump/1
         ]).
 
 start_link() ->
@@ -44,6 +46,26 @@ add_pool(Num) ->
 
 list() ->
     gen_server:call(?MODULE, {list}).
+
+
+dump(GroupId) ->
+    case ets:lookup(my_group_msgpid_info, GroupId) of
+        [] ->
+            {ok, Pid} = gen_server:call(?MODULE, {attach_new_group_pid, GroupId}),
+            sync_deliver_group_task(dump, Pid, GroupId, {GroupId});
+        [{GroupId, Pid}] ->
+            sync_deliver_group_task(dump, Pid, GroupId, {GroupId})
+    end.
+    
+
+query_group_msg(GroupId, Uid, Seq, Size) ->
+    case ets:lookup(my_group_msgpid_info, GroupId) of
+        [] ->
+            {ok, Pid} = gen_server:call(?MODULE, {attach_new_group_pid, GroupId}),
+            sync_deliver_group_task(query_group_msg, Pid, GroupId, {GroupId, Uid, Seq, Size});
+        [{GroupId, Pid}] ->
+            sync_deliver_group_task(query_group_msg, Pid, GroupId, {GroupId, Uid, Seq, Size})
+    end.
 
 
 get_offline_msg(GroupId, Seq, User) ->
@@ -293,5 +315,10 @@ deliver(get_offline_msg, Pid, {GroupId, Seq, User}) ->
     my_group_user_msg_handler:get_offline_msg(Pid, GroupId, Seq, User);
 
 deliver(delete_group_msg, Pid, {GroupId, Sid}) ->
-    my_group_user_msg_handler:delete_group_msg(Pid, GroupId, Sid).
+    my_group_user_msg_handler:delete_group_msg(Pid, GroupId, Sid);
 
+deliver(query_group_msg, Pid, {GroupId, Uid, Seq, Size}) ->
+    my_group_user_msg_handler:query_group_msg(Pid, GroupId, Uid, Seq, Size);
+
+deliver(dump, Pid, {GroupId}) ->
+    my_group_user_msg_handler:dump(Pid, GroupId).

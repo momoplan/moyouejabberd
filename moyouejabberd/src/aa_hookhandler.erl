@@ -86,6 +86,7 @@ deal_offline_msg(From, To, Packet) ->
             "msgStatus" ->
                 ok;
             _->
+                ?INFO_MSG("deal_offline_msg From : ~p~n To : ~p~n, Packet : ~p~n",[From, To, Packet]),
                 MID = case dict:is_key("id", D) of
                           true ->
                               dict:fetch("id", D);
@@ -150,21 +151,18 @@ send_offline_message(From ,To ,Packet,MID,MsgType,N) when N < 3 ->
                         ?ERROR_MSG("send_offline_message failed, msgId : ~p, reason : ~p~n",[MID, Other]),
                         false
                 end ;
-            {error, Reason} ->
-                ?ERROR_MSG("send_offline_message http failed, msgId : ~p, reason : ~p~n",[MID, Reason]),
+            {error, _Reason} ->
                 timer:sleep(200),
                 send_offline_message(From,To,Packet,MID,MsgType,N + 1)
         end
     catch
         _:_ ->
-            Err0 = erlang:get_stacktrace(),
-            ?ERROR_MSG("send_offline_message unknow failed, MsgId : ~p, reason : ~p~n",[MID, Err0]),
             timer:sleep(200),
             send_offline_message(From,To,Packet,MID,MsgType,N + 1)
     end,
     ok;
 send_offline_message(From ,To ,Packet,MID,MsgType, 3) ->
-    ?ERROR_MSG("send_offline_message lost ~p",[{From ,To ,Packet, MID, MsgType}]),
+    ?ERROR_MSG("send_offline_message failed, lost msg : ~p",[{From ,To ,Packet, MID, MsgType}]),
     ok.
 
 
@@ -186,22 +184,18 @@ get_user_list_by_group_id(Domain, GroupId)->
                         case rfc4627:get_field(Obj, "success") of
                             {ok, true} ->
                                 rfc4627:get_field(Obj, "entity");
-                            Err1 ->
-                                ?ERROR_MSG("get_user_list_by_group_id return failed, groupId : ~p, Err : ~p~n",[GroupId, Err1]),
-                                error
+                            Code ->
+                                {error, "success field error", Code}
                         end;
-                    Error ->
-                        ?ERROR_MSG("get_user_list_by_group_id DBody failed, groupId : ~p, Err : ~p~n",[GroupId, Error]),
-                        error
+                    _ ->
+                        {error, "decode body error", DBody}
                 end ;
             {error, Reason} ->
-                ?ERROR_MSG("get_user_list_by_group_id httpc:request failed, groupId : ~p, Err : ~p~n",[GroupId, Reason]),
-                error
+                {error, "httpc request error", Reason}
         end
     catch
-        _ErrType:ErrReason->
-            ?ERROR_MSG("get_user_list_by_group_id unknow failed, groupId : ~p, Err : ~p~n", [GroupId, ErrReason]),
-            error
+        ErrType:ErrReason->
+            {error, "unknow error", {ErrType, ErrReason}}
     end.
 
 get_group_members(GroupId, Domain) ->
@@ -213,8 +207,8 @@ get_group_members(GroupId, Domain) ->
                     Data = #group_members{gid = GroupId, members = UserList1},
                     mnesia:dirty_write(?GOUPR_MEMBER_TABLE, Data),
                     {ok, UserList1};
-                _Err ->
-                    error
+                Err ->
+                    ?INFO_MSG("get_group_members error : ~p~n",[Err])
             end;
         [#group_members{members = Members}] ->
             {ok, Members};
@@ -224,10 +218,10 @@ get_group_members(GroupId, Domain) ->
 
 
 user_send_packet_handler(#jid{server = Domain}=From, To, Packet) ->
-    ?INFO_MSG("user_send_packet_handler From : ~p~n, To : ~p~n, Packet : ~p~n",[From, To, Packet]),
     try
         case Packet of
             {Tag, "message", Attr, Body} ->
+                ?INFO_MSG("user_send_packet_handler From : ~p~n, To : ~p~n, Packet : ~p~n",[From, To, Packet]),
                 MT = proplists:get_value("msgtype", Attr, ""),
                 if MT == "groupchat" andalso "gamepro.com" == Domain ->
                         GroupId = proplists:get_value("groupid", Attr, To#jid.user),
@@ -370,7 +364,7 @@ init([]) ->
         end, ?MYHOSTS),
     %% 2014-3-4 : 在这个 HOOK 初始化时，启动一个thrift 客户端，同步数据到缓存服务器
     %% 启动5281端口，接收内网回调
-    aa_inf_server:start(),
+    %    aa_inf_server:start(),
     State = #state{},
 	
 	ets:new(?ETS_ACK_TASK, [named_table, public, set]),
@@ -703,8 +697,7 @@ get_data_node(#jid{server = Domain}=User) ->
 					node()
 			end
 	end,
-	?DEBUG("get data node final get , ~p", [FinalNode]),
-	FinalNode.
+    FinalNode.
 
 test_node(TableName) ->
     case catch mnesia:table_info(TableName, where_to_write) of
