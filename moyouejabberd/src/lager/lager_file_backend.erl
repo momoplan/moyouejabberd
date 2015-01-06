@@ -142,6 +142,10 @@ handle_call(new, #state{base_name=BaseName, dir=Dir, fd=FD, sync_interval=SyncIn
     file:datasync(FD),
     file:close(FD),
     file:close(FD),
+    DelStamp = del_day(),
+    DelLogFile = BaseName ++ DelStamp ++ ".log",
+    DelName = filename:join([Dir, DelLogFile]),
+    file:delete(DelName),
     Stamp = today(),
     LogFile = BaseName ++ Stamp ++ ".log",
     Name = filename:join([Dir, LogFile]),
@@ -386,6 +390,19 @@ today() ->
                                            end
                                    end, [integer_to_list(X) || X <- tuple_to_list(Date)])),
     DateS.
+
+
+del_day() ->
+    {Date, _} = erlang:localtime(),
+    Days = calendar:date_to_gregorian_days(Date),
+    Date1 = calendar:gregorian_days_to_date(Days - 2),
+    DateS = lists:concat(lists:map(fun(X) ->
+                                           if length(X) == 1 -> string:concat("0", X);
+                                               true -> X
+                                           end
+                                   end, [integer_to_list(X) || X <- tuple_to_list(Date1)])),
+    DateS.
+
 
 open_new(Name) ->
     {_, Time} = erlang:localtime(),

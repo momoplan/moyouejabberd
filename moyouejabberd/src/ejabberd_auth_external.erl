@@ -194,18 +194,14 @@ check_password_extauth(do, User, Server, Password) ->
                         {ok,true} ->
                             true;
                         {ok,false} ->
-                            {ok,Entity} = rfc4627:get_field(Obj,"entity"),
-                            ?ERROR_MSG("check_password_extauth failed, User : ~p, Server : ~p, Password :~p, error: ~p~n",[User, Server, Password, Entity]),
                             false;
                         _ ->
                             false
                     end;
-                {error, Reason}->
-                    ?ERROR_MSG("check_password_extauth failed, User : ~p, Server : ~p, Password :~p, error: ~p~n",[User, Server, Password, Reason]),
+                {error, _Reason}->
                     false
             end ;
-        {error, Reason}->
-            ?ERROR_MSG("check_password_extauth failed, User : ~p, Server : ~p, Password :~p, error: ~p~n",[User, Server, Password, Reason]),
+        {error, _Reason}->
             false
     end.
 
