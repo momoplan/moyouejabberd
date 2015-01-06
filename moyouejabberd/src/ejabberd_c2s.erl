@@ -1329,9 +1329,9 @@ print_state(State = #state{pres_t = T, pres_f = F, pres_a = A, pres_i = I}) ->
 %%----------------------------------------------------------------------
 terminate(_Reason, StateName, StateData) ->
     ejabberd_sm:close_session(StateData#state.sid,
-						      StateData#state.user,
-						      StateData#state.server,
-						      StateData#state.resource),
+                              StateData#state.user,
+                              StateData#state.server,
+                              StateData#state.resource),
     (StateData#state.sockmod):close(StateData#state.socket),
     ok.
 

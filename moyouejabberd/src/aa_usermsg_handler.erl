@@ -17,12 +17,12 @@
 %% API functions
 %% ====================================================================
 -export([start_link/1,
-		 store_msg/4,
-		 del_msg/2,
-		 get_offline_msg/1]).
+         store_msg/4,
+         del_msg/2,
+         get_offline_msg/1]).
 
 -export([dump/1,
-		load/1]).
+         load/1]).
 
 dump(Jid) ->
     ?INFO_MSG("aa user msg rcv dump msg call ~p", [Jid]),
@@ -74,7 +74,7 @@ load(Jid) ->
 %% 	end.
 
 start_link(_Jid) ->
-	ok.
+    ok.
 
 %% 放弃每个用户一个进程，这些代码无用，注释
 %% 	case supervisor:start_child(my_usermsg_pid_sup, {aa_usermsg_handler, 
@@ -114,6 +114,7 @@ store_msg(Key, From, To, Packet) ->
     store_message(Key, format_user_data(From), format_user_data(To), Packet),
     aa_msg_statistic:add().
 
+
 del_msg(Key, UserJid1) ->
     delete_message(Key,format_user_data(UserJid1)),
     aa_msg_statistic:del().
@@ -147,7 +148,7 @@ get_offline_msg(UserJid1) ->
 %% 					 get_user_tables(UserJid),
 %% 				{T1, T2}
 %% 		end,
-%% 	
+%%
 %% 	case mnesia:transaction(F) of
 %% 		{aborted, Reason} ->
 %% 			?ERROR_MSG("get offline for user ~p, Reason:~p", [UserJid1, Reason]),
@@ -162,22 +163,23 @@ get_offline_msg(UserJid1) ->
 %% 				[UM] ->
 %% 					MsgsIds = recheck_message_ids(TableName, RamMsgListTableName, UM),
 %% 					%% 保证有消息，保证是倒序的
-%% 					Msgs = load_mnesia_messages(MsgsIds, TableName),						
+%% 					Msgs = load_mnesia_messages(MsgsIds, TableName),
 %% 					{ok, Msgs};
 %% 				_ ->
 %% 					{ok, []}
 %% 			end
 %% 	end.
 
+
 load_mnesia_messages(MsgsIds, TableName) ->
-	lists:foldl(fun(Key, MList) ->
-						case mnesia:dirty_read(TableName, Key) of
-							[M] ->
-								[M|MList];
-							_ ->
-								MList
-						end
-				end, [], MsgsIds).
+    lists:foldl(fun(Key, MList) ->
+                        case mnesia:dirty_read(TableName, Key) of
+                            [M] ->
+                                [M|MList];
+                            _ ->
+                                MList
+                        end
+                end, [], MsgsIds).
 
 %% ====================================================================
 %% Internal functions
@@ -295,25 +297,25 @@ store_message(Key, From, #jid{server = Domain}=To, Packet) ->
 %% 	mnesia:dirty_write(TableName, Data).
 
 delete_message(Key, UserJid) ->	
-	case mnesia:dirty_read(?MY_USER_TABLES, UserJid) of
-		[TableInfo] ->
-			#?MY_USER_TABLES{msg_table = TableName, msg_list_table = ListTableName} =TableInfo,
-			mnesia:dirty_delete(TableName, Key),
-			case mnesia:dirty_read(ListTableName, UserJid) of
-				[#user_msg_list{msg_list = KeyList}] ->
-					case KeyList of
-						[Key|Rest] ->
-							NewListData = #user_msg_list{id = UserJid, msg_list = Rest};
-						_ ->
-							NewListData = #user_msg_list{id = UserJid, msg_list = lists:delete(Key, KeyList)}
-					end,
-					mnesia:dirty_write(ListTableName, NewListData);
-				_ ->
-					skip
-			end;
-		_ ->
-			skip
-	end.
+    case mnesia:dirty_read(?MY_USER_TABLES, UserJid) of
+        [TableInfo] ->
+            #?MY_USER_TABLES{msg_table = TableName, msg_list_table = ListTableName} =TableInfo,
+            mnesia:dirty_delete(TableName, Key),
+            case mnesia:dirty_read(ListTableName, UserJid) of
+                [#user_msg_list{msg_list = KeyList}] ->
+                    case KeyList of
+                        [Key|Rest] ->
+                            NewListData = #user_msg_list{id = UserJid, msg_list = Rest};
+                        _ ->
+                            NewListData = #user_msg_list{id = UserJid, msg_list = lists:delete(Key, KeyList)}
+                    end,
+                    mnesia:dirty_write(ListTableName, NewListData);
+                _ ->
+                    skip
+            end;
+        _ ->
+            skip
+    end.
 %% 	F = fun() ->
 %% 				case mnesia:read(?MY_USER_TABLES, UserJid,write) of
 %% 					[TableInfo] ->
@@ -343,96 +345,96 @@ delete_message(Key, UserJid) ->
 %% 	    end.
 
 format_user_data(Jid) ->
-	Jid#jid{resource = [], lresource = []}.
+    Jid#jid{resource = [], lresource = []}.
 
 
 get_userpid_name(#jid{user = Uid, server = Domain}) ->
-	list_to_atom(Uid ++ "@" ++ Domain).
+    list_to_atom(Uid ++ "@" ++ Domain).
 
 %% 直接传表进来是因为外层直接做了锁，内层不需要关心锁的事情
 load_message_from_mysql(Jid, MsgTableName, ListTableName) ->
-	LoadKeyList = load_msg_to_mnesia(MsgTableName, Jid),
-	rebuild_user_msglist(Jid, ListTableName, LoadKeyList),
-	clear_user_mysql_data(Jid),
-	ok.
+    LoadKeyList = load_msg_to_mnesia(MsgTableName, Jid),
+    rebuild_user_msglist(Jid, ListTableName, LoadKeyList),
+    clear_user_mysql_data(Jid),
+    ok.
 
 load_msg_to_mnesia(MsgTableName, Jid) ->
-	Name = get_userpid_name(Jid),
-	Sql = io_lib:format("select * from messages where jid='~s' order by id desc",[Name]),
-	case db_sql:get_all(Sql) of
-		[] ->
-			LoadKeyList = [];
-		DataList when is_list(DataList) ->
-			LoadKeyList = deal_mysql_datas(DataList, MsgTableName)
-	end,
-	LoadKeyList.
+    Name = get_userpid_name(Jid),
+    Sql = io_lib:format("select * from messages where jid='~s' order by id desc",[Name]),
+    case db_sql:get_all(Sql) of
+        [] ->
+            LoadKeyList = [];
+        DataList when is_list(DataList) ->
+            LoadKeyList = deal_mysql_datas(DataList, MsgTableName)
+    end,
+    LoadKeyList.
 
 deal_mysql_datas(DataList, MsgTableName) ->
-	F = fun(Data, KList) ->
-				Msg = format_msg(Data),
-				mnesia:dirty_write(MsgTableName, Msg),
-				[Msg#user_msg.id|KList]
-		end,
-	lists:foldl(F, [], DataList).
+    F = fun(Data, KList) ->
+                Msg = format_msg(Data),
+                mnesia:dirty_write(MsgTableName, Msg),
+                [Msg#user_msg.id|KList]
+        end,
+    lists:foldl(F, [], DataList).
 
 format_msg([_Id, _JId, Content, TimeStamp]) ->
-	{Key, From, To, Packet1} = bitstring_to_term(Content),
-	Packet = binary_to_term(Packet1),
-	#user_msg{id = Key, 
-			  from = From, 
-			  to = To, 
-			  packat = Packet, 
-			  timestamp = TimeStamp, 
-			  expire_time = 0, 
-			  score = index_score()
-			 }.
+    {Key, From, To, Packet1} = bitstring_to_term(Content),
+    Packet = binary_to_term(Packet1),
+    #user_msg{id = Key,
+              from = From,
+              to = To,
+              packat = Packet,
+              timestamp = TimeStamp,
+              expire_time = 0,
+              score = index_score()
+             }.
 
 clear_user_mysql_data(Jid) ->	
-	Name = get_userpid_name(Jid),
-	Sql1 = io_lib:format("delete from messages where jid='~s'",[Name]),
-	db_sql:execute(Sql1).
+    Name = get_userpid_name(Jid),
+    Sql1 = io_lib:format("delete from messages where jid='~s'",[Name]),
+    db_sql:execute(Sql1).
 
 rebuild_user_msglist(Jid, ListTableName, LoadKeyList) ->
-	case mnesia:dirty_read(ListTableName, Jid) of
-		[#user_msg_list{msg_list = MList} = Data] ->			
-			NewData = Data#user_msg_list{msg_list = MList ++ LoadKeyList};
-		_ ->
-			NewData = #user_msg_list{id = Jid, msg_list = LoadKeyList}
-	end,
-	?DEBUG("new list data ~p", [NewData]),
-	mnesia:dirty_write(ListTableName, NewData).
+    case mnesia:dirty_read(ListTableName, Jid) of
+        [#user_msg_list{msg_list = MList} = Data] ->
+            NewData = Data#user_msg_list{msg_list = MList ++ LoadKeyList};
+        _ ->
+            NewData = #user_msg_list{id = Jid, msg_list = LoadKeyList}
+    end,
+    ?DEBUG("new list data ~p", [NewData]),
+    mnesia:dirty_write(ListTableName, NewData).
 
 write_messages_to_sql(_Jid, [], _Tablename)->
-	ok;
+    ok;
 write_messages_to_sql(Jid, AvaliabelMsgList, Tablename) ->
-	Name = get_userpid_name(Jid),
-	Count = length(AvaliabelMsgList),
-	if Count > 50 ->
-		   {WriteList, Rest} = lists:split(50, AvaliabelMsgList);
-	   true ->
-		   WriteList = AvaliabelMsgList,
-		   Rest = []
-	end,
-	F = fun(#user_msg{id = Key, from = From, to = To, packat = Packet, timestamp = TimeStamp}) ->
-%% 				?ERROR_MSG("time stapm ~p", [TimeStamp]),
-				case TimeStamp of
-					{datetime, _} ->
-						Ts = 0;
-					_ ->
-						Ts = TimeStamp
-				end,
-				Content = term_to_bitstring({Key, From, To, term_to_binary(Packet)}),
-				io_lib:format("('~s', '~s', ~p)", [Name, Content, Ts])
-		end,
-	Datas = [ F(Message) || Message <- WriteList],
-	Bodys = implode(",", Datas),
-	Sql = "insert into messages(`jid`, `content`, `createDate`) values" ++ Bodys,
-	db_sql:execute(Sql),
-	write_messages_to_sql(Jid, Rest, Tablename).
+    Name = get_userpid_name(Jid),
+    Count = length(AvaliabelMsgList),
+    if Count > 50 ->
+            {WriteList, Rest} = lists:split(50, AvaliabelMsgList);
+        true ->
+            WriteList = AvaliabelMsgList,
+            Rest = []
+    end,
+    F = fun(#user_msg{id = Key, from = From, to = To, packat = Packet, timestamp = TimeStamp}) ->
+                %% 				?ERROR_MSG("time stapm ~p", [TimeStamp]),
+                case TimeStamp of
+                    {datetime, _} ->
+                        Ts = 0;
+                    _ ->
+                        Ts = TimeStamp
+                end,
+                Content = term_to_bitstring({Key, From, To, term_to_binary(Packet)}),
+                io_lib:format("('~s', '~s', ~p)", [Name, Content, Ts])
+        end,
+    Datas = [ F(Message) || Message <- WriteList],
+    Bodys = implode(",", Datas),
+    Sql = "insert into messages(`jid`, `content`, `createDate`) values" ++ Bodys,
+    db_sql:execute(Sql),
+    write_messages_to_sql(Jid, Rest, Tablename).
 
 %% 在List中的每两个元素之间插入一个分隔符
 implode(_S, [])->
-	[<<>>];
+    [<<>>];
 implode(S, L) when is_list(L) ->
     implode(S, L, []).
 implode(_S, [H], NList) ->

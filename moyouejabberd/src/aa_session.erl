@@ -12,21 +12,21 @@
 
 
 find(Username)->
-	Keys = mnesia:dirty_all_keys(session),
-	lists:filtermap(fun(K)->
-							case mnesia:dirty_read(session, K) of
-								[Session] ->
-									{U,_} = Session#session.us,
-									case Username=:=U of
-										true->
-											{true, Session};
-										_ ->
-											false
-									end;
-								_ ->
-									false
-							end
-					end,Keys).
+    Keys = mnesia:dirty_all_keys(session),
+    lists:filtermap(fun(K)->
+                            case mnesia:dirty_read(session, K) of
+                                [Session] ->
+                                    {U,_} = Session#session.us,
+                                    case Username=:=U of
+                                        true->
+                                            {true, Session};
+                                        _ ->
+                                            false
+                                    end;
+                                _ ->
+                                    false
+                            end
+                    end,Keys).
 
 
 pid_find_user(Pid) ->

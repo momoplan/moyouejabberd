@@ -63,7 +63,7 @@ check_cache_last_options(Server) ->
 	    case get_mod_last_configured(Server) of
 		no_mod_last ->
 		    ?ERROR_MSG("In host ~p extauth is used, extauth_cache is enabled but "
-			       "mod_last is not enabled.", [Server]),
+                        "mod_last is not enabled.", [Server]),
 		    no_cache;
 		_ -> cache
 	    end
@@ -73,7 +73,7 @@ plain_password_required() ->
     true.
 
 store_type() ->
-	external.
+    external.
 
 check_password(User, Server, Password) ->
     case get_cache_option(Server) of
@@ -87,7 +87,7 @@ check_password(User, Server, Password, _Digest, _DigestGen) ->
 set_password(User, Server, Password) ->
     case extauth:set_password(User, Server, Password) of
 	true -> set_password_internal(User, Server, Password),
-		ok;
+            ok;
 	_ -> {error, unknown_problem}
     end.
 

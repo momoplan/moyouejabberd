@@ -39,16 +39,16 @@ stop() ->
         fun(Host) ->
                 ejabberd_hooks:delete(user_send_packet,Host,?MODULE, user_send_packet_handler ,80)
 
-	  end, ?MYHOSTS),
+        end, ?MYHOSTS),
     exit(whereis(?MODULE), stop),
-	ok.
+    ok.
 
 
 reinit_pushpids() ->
-	gen_server:call(?MODULE, rebuild_pushpids).
+    gen_server:call(?MODULE, rebuild_pushpids).
 
 rlcfg() ->
-	gen_server:call(?MODULE, reload_config).
+    gen_server:call(?MODULE, reload_config).
 
 %% Message 有时是长度大于1的列表，所以这里要遍历
 %% 如果列表中有多个要提取的关键字，我就把他们组合成一个 List
@@ -100,8 +100,8 @@ deal_offline_msg(From, To, Packet) ->
 
 %% 将 Packet 中的 Text 消息 Post 到指定的 Http 服务
 %% IOS 消息推送功能
-send_offline_message(From ,To ,Packet,MID,MsgType )->
-	send_offline_message(From,To,Packet,MID,MsgType,0).	
+send_offline_message(From ,To ,Packet,MID,MsgType) ->
+    send_offline_message(From,To,Packet,MID,MsgType,0).
 send_offline_message(From ,To ,Packet,MID,MsgType,N) when N < 3 ->
     {jid,FromUser,Domain,_,_,_,_} = From ,
     {jid,ToUser,_,_,_,_,_} = To ,
@@ -351,11 +351,11 @@ receive_ack(SYNCID, From, To, Packet) ->
 %% Behavioural functions 
 %% ====================================================================
 -record(state, {
-	  ecache_node,
-	  ecache_mod=ecache_server,
-	  ecache_fun=cmd,
-	  push_pids = []
-}).
+    ecache_node,
+    ecache_mod=ecache_server,
+    ecache_fun=cmd,
+    push_pids = []
+               }).
 
 init([]) ->
     lists:foreach(
@@ -367,10 +367,10 @@ init([]) ->
     %    aa_inf_server:start(),
     State = #state{},
 	
-	ets:new(?ETS_ACK_TASK, [named_table, public, set]),
+    ets:new(?ETS_ACK_TASK, [named_table, public, set]),
 	
-	%% 初始化mnesia表
-	State1 = init_mnesia_tables(State),
+    %% 初始化mnesia表
+    State1 = init_mnesia_tables(State),
 	
     PushPids = [spawn(fun() ->
                               local_handle_offline_message()
@@ -378,18 +378,18 @@ init([]) ->
     {ok, State1#state{push_pids = PushPids}}.
 
 handle_call(reload_config, _From, State) ->
-	ejabberd_config:reload_config(),
-	{reply, reload_ok, State};
+    ejabberd_config:reload_config(),
+    {reply, reload_ok, State};
 
 handle_call(rebuild_pushpids, _From, State) ->
-	[exit(Pid, kill) || Pid <- State#state.push_pids],
-	PushPids = [spawn(fun() ->
-							  local_handle_offline_message()
-					  end) || _ <- lists:duplicate(?PUSH_PID_NUM, 1)],
-	{reply, rebuild_ok, State#state{push_pids = PushPids}};
+    [exit(Pid, kill) || Pid <- State#state.push_pids],
+    PushPids = [spawn(fun() ->
+                              local_handle_offline_message()
+                      end) || _ <- lists:duplicate(?PUSH_PID_NUM, 1)],
+    {reply, rebuild_ok, State#state{push_pids = PushPids}};
 
 handle_call(_Call, _From, State)->
-	{reply, ok, State}.
+    {reply, ok, State}.
 
 handle_cast({server_ack, #jid{server=FD}, _To, Packet},State)->
     Domain = FD,
@@ -439,28 +439,28 @@ handle_cast({server_ack, #jid{server=FD}, _To, Packet},State)->
     {noreply, State};
 
 handle_cast({deal_offline_msg, From,To,Packet}, State) ->
-	case State#state.push_pids of
-		[_pid|_] ->
-			PushPids = State#state.push_pids;
-		_ ->
-			PushPids = [spawn(fun() ->
-							  local_handle_offline_message()
-					  end) || _ <- lists:duplicate(?PUSH_PID_NUM, 1)]
-	end,
+    case State#state.push_pids of
+        [_pid|_] ->
+            PushPids = State#state.push_pids;
+        _ ->
+            PushPids = [spawn(fun() ->
+                                      local_handle_offline_message()
+                              end) || _ <- lists:duplicate(?PUSH_PID_NUM, 1)]
+    end,
 	
-	Pid = random_pushpid(PushPids),
+    Pid = random_pushpid(PushPids),
 	
-	case is_process_alive(Pid) of
-		true ->
-			Pid ! {offline_msg, From, To, Packet},
-			{noreply, State#state{push_pids = PushPids}};
-		false ->
-			NewPids = lists:delete(Pid, PushPids),
-			deal_offline_msg(From, To, Packet),
-			{noreply, State#state{push_pids = NewPids}}
-	end;
+    case is_process_alive(Pid) of
+        true ->
+            Pid ! {offline_msg, From, To, Packet},
+            {noreply, State#state{push_pids = PushPids}};
+        false ->
+            NewPids = lists:delete(Pid, PushPids),
+            deal_offline_msg(From, To, Packet),
+            {noreply, State#state{push_pids = NewPids}}
+    end;
 handle_cast(_Msg, State) -> 
-	{noreply, State}.
+    {noreply, State}.
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -499,80 +499,80 @@ ack_task(ID, From, To, Packet)->
             gen_server:cast(?MODULE, {deal_offline_msg, From, To, Packet})
     end.
 
-
+    
 server_ack(From,To,Packet)->
-	gen_server:cast(?MODULE,{server_ack,From,To,Packet}).
+    gen_server:cast(?MODULE,{server_ack, From, To, Packet}).
 
 
 get_id()-> 
-	{M,S,SS} = now(), 
-	atom_to_list(node())++"_"++integer_to_list(M)++integer_to_list(S)++integer_to_list(SS).
+    {M,S,SS} = now(),
+    atom_to_list(node())++"_"++integer_to_list(M)++integer_to_list(S)++integer_to_list(SS).
 
 
 init_mnesia_tables(State) ->
-	[Domain|_] = ?MYHOSTS,
+    [Domain|_] = ?MYHOSTS,
 	
-	case ejabberd_config:get_local_option({store_group_members, Domain}) of
-		1 ->
-			create_or_copy_table(?GOUPR_MEMBER_TABLE, [{attributes, record_info(fields,?GOUPR_MEMBER_TABLE)}, 
-											   {ram_copies, [node()]}], ram_copies);
-		_ ->
-			skip
-	end,
+    case ejabberd_config:get_local_option({store_group_members, Domain}) of
+        1 ->
+            create_or_copy_table(?GOUPR_MEMBER_TABLE, [{attributes, record_info(fields,?GOUPR_MEMBER_TABLE)},
+                                                       {ram_copies, [node()]}], ram_copies);
+        _ ->
+            skip
+    end,
 	
-	case ejabberd_config:get_local_option({handle_msg_tables, Domain}) of
-		undefined ->
-			skip;
-		[] ->
-			skip;
-		MsgTables when is_list(MsgTables) ->
-			[create_or_copy_table(Table, [{record_name, user_msg},
-										  {attributes, record_info(fields,user_msg)}, 
-										  {ram_copies, [node()]}], ram_copies) || Table <- MsgTables]
-	end,
+    case ejabberd_config:get_local_option({handle_msg_tables, Domain}) of
+        undefined ->
+            skip;
+        [] ->
+            skip;
+        MsgTables when is_list(MsgTables) ->
+            [create_or_copy_table(Table, [{record_name, user_msg},
+                                          {attributes, record_info(fields,user_msg)},
+                                          {ram_copies, [node()]}], ram_copies) || Table <- MsgTables]
+    end,
 	
-	case ejabberd_config:get_local_option({handle_msglist_tables, Domain}) of
-		undefined ->
-			skip;
-		[] ->
-			skip;
-		MsgListTables when is_list(MsgListTables) ->
-			[create_or_copy_table(Table, [{record_name, user_msg_list},
-										  {attributes, record_info(fields,user_msg_list)}, 
-										  {ram_copies, [node()]}], ram_copies) || Table <- MsgListTables]
-	end,
+    case ejabberd_config:get_local_option({handle_msglist_tables, Domain}) of
+        undefined ->
+            skip;
+        [] ->
+            skip;
+        MsgListTables when is_list(MsgListTables) ->
+            [create_or_copy_table(Table, [{record_name, user_msg_list},
+                                          {attributes, record_info(fields,user_msg_list)},
+                                          {ram_copies, [node()]}], ram_copies) || Table <- MsgListTables]
+    end,
 	
-	%% 用户数据存储表
-	case ejabberd_config:get_local_option({store_user_tables_info, Domain}) of
-		1 ->
-			create_or_copy_table(?MY_USER_TABLES, [{attributes, record_info(fields,?MY_USER_TABLES)}, 
-												   {ram_copies, [node()]}], ram_copies);
-		_ ->
-			skip
-	end,
-	State.
+    %% 用户数据存储表
+    case ejabberd_config:get_local_option({store_user_tables_info, Domain}) of
+        1 ->
+            create_or_copy_table(?MY_USER_TABLES, [{attributes, record_info(fields,?MY_USER_TABLES)},
+                                                   {ram_copies, [node()]}], ram_copies);
+        _ ->
+            skip
+    end,
+    State.
 
 create_or_copy_table(TableName, Opts, Copy) ->
-	case mnesia:create_table(TableName, Opts) of
-		{aborted,{already_exists,_}} ->
-			mnesia:add_table_copy(TableName, node(), Copy);
-		_ ->
-			skip
-	end.
+    case mnesia:create_table(TableName, Opts) of
+        {aborted,{already_exists,_}} ->
+            mnesia:add_table_copy(TableName, node(), Copy);
+        _ ->
+            skip
+    end.
 
 random_pushpid(Pids) ->
-	Count = length(Pids),	
-	{A, B, C} = os:timestamp(),
-	random:seed(A, B,C),
-	Index = random:uniform(Count),
-	lists:nth(Index, Pids).
+    Count = length(Pids),
+    {A, B, C} = os:timestamp(),
+    random:seed(A, B,C),
+    Index = random:uniform(Count),
+    lists:nth(Index, Pids).
 
 local_handle_offline_message() ->
-	receive
-		{offline_msg, From, To, Packet} ->
-			deal_offline_msg(From,To,Packet),
-			local_handle_offline_message()
-	end.
+    receive
+        {offline_msg, From, To, Packet} ->
+            deal_offline_msg(From,To,Packet),
+            local_handle_offline_message()
+    end.
 
 
 store_group_message(From, GroupId, Packet) ->
@@ -618,21 +618,21 @@ update_user_group_info(User, GroupId, Seq) ->
     
 
 store_message(SYNCID, From, To, RPacket) ->
-	case get_data_node(To) of
-		none ->
-			aa_usermsg_handler:store_msg(SYNCID, From, To, RPacket);
-		Node ->
-			rpc:cast(Node, my_msg_center, store_message, [To, {SYNCID, From, RPacket}])
-	end.
+    case get_data_node(To) of
+        none ->
+            aa_usermsg_handler:store_msg(SYNCID, From, To, RPacket);
+        Node ->
+            rpc:cast(Node, my_msg_center, store_message, [To, {SYNCID, From, RPacket}])
+    end.
 
 
 del_message(SYNCID, User) ->
-	case get_data_node(User) of
-		none ->
-			aa_usermsg_handler:del_msg(SYNCID, User);
-		Node ->
-			rpc:cast(Node, my_msg_center, delete_message, [User, SYNCID])
-	end.
+    case get_data_node(User) of
+        none ->
+            aa_usermsg_handler:del_msg(SYNCID, User);
+        Node ->
+            rpc:cast(Node, my_msg_center, delete_message, [User, SYNCID])
+    end.
 
 get_offline_msg(User) ->
     {ok, NormalList} = get_normal_msg(User),
@@ -681,21 +681,21 @@ get_group_data_node() ->
 
 
 get_data_node(#jid{server = Domain}=User) ->
-	FinalNode =
+    FinalNode =
 	case mnesia:dirty_read(?MY_USER_TABLES, User) of
-		[ #?MY_USER_TABLES{msg_list_table = ListTableName}] ->
-			test_node(ListTableName);
-		[] ->
-			case ejabberd_config:get_local_option({new_table, Domain}) of
-				undefined ->
-					node();
-				[TableName|_] when is_atom(TableName) ->
-					test_node(TableName);
-				[TableName|_] when is_list(TableName) ->
-					test_node(list_to_atom(TableName));
-				_ ->
-					node()
-			end
+            [ #?MY_USER_TABLES{msg_list_table = ListTableName}] ->
+                test_node(ListTableName);
+            [] ->
+                case ejabberd_config:get_local_option({new_table, Domain}) of
+                    undefined ->
+                        node();
+                    [TableName|_] when is_atom(TableName) ->
+                        test_node(TableName);
+                    [TableName|_] when is_list(TableName) ->
+                        test_node(list_to_atom(TableName));
+                    _ ->
+                        node()
+                end
 	end,
     FinalNode.
 

@@ -17,7 +17,7 @@
          handle_info/2,
          terminate/2,
          code_change/3,
-		 stop/0]).
+         stop/0]).
 
 -record(state, {}).
 -record(success,{success=true,entity}).
@@ -37,31 +37,31 @@ start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 stop() ->
-	exit(erlang:whereis(?MODULE), kill),
-	spawn(fun() ->
-				  timer:sleep(3000),
-				  aa_http:init([])
-		  end).
+    exit(erlang:whereis(?MODULE), kill),
+    spawn(fun() ->
+                  timer:sleep(3000),
+                  aa_http:init([])
+          end).
 
 handle_http(Req) ->
-	try
-		Method = Req:get(method),
-		Args = case Method of
-				   'GET' ->
-					   Req:parse_qs();
-				   'POST' ->
-					   Req:parse_post();
-				   'HEAD' ->
-					   []
-			   end,
-		if Args == [] ->
-			   http_response({#success{success=false,entity=list_to_binary("empty argrment")},Req});
-		   true ->			   
-			   [{"body",Body}] = Args,
-			   ?DEBUG("###### handle_http :::> Body=~p",[Body]),
-			   {ok,Obj,_Re} = rfc4627:decode(Body),
-			   %%{ok,T} = rfc4627:get_field(Obj, "token"),
-			   {ok,M} = rfc4627:get_field(Obj, "method"),
+    try
+        Method = Req:get(method),
+        Args = case Method of
+                   'GET' ->
+                       Req:parse_qs();
+                   'POST' ->
+                       Req:parse_post();
+                   'HEAD' ->
+                       []
+               end,
+        if Args == [] ->
+                http_response({#success{success=false,entity=list_to_binary("empty argrment")},Req});
+            true ->
+                [{"body",Body}] = Args,
+                ?DEBUG("###### handle_http :::> Body=~p",[Body]),
+                {ok,Obj,_Re} = rfc4627:decode(Body),
+                %%{ok,T} = rfc4627:get_field(Obj, "token"),
+                {ok,M} = rfc4627:get_field(Obj, "method"),
 			   
                 case binary_to_list(M) of
                     "message_count" ->
@@ -170,11 +170,11 @@ handle_http(Req) ->
 %% 	gen_server:call(?MODULE,{handle_http,Req}).
 
 http_response({S,Req}) ->
-	Res = {obj,[{success,S#success.success},{entity,S#success.entity}]},
-	?DEBUG("##### http_response ::::> S=~p",[Res]),
-	J = rfc4627:encode(Res),
-	?DEBUG("##### http_response ::::> J=~p",[J]),
-	Req:ok([{"Content-Type", "text/json"}], "~s", [J]).
+    Res = {obj,[{success,S#success.success},{entity,S#success.entity}]},
+    ?DEBUG("##### http_response ::::> S=~p",[Res]),
+    J = rfc4627:encode(Res),
+    ?DEBUG("##### http_response ::::> J=~p",[J]),
+    Req:ok([{"Content-Type", "text/json"}], "~s", [J]).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -192,10 +192,8 @@ http_response({S,Req}) ->
 %% @end
 %%--------------------------------------------------------------------
 init([]) ->
-	?ERROR_MSG("aa http init []", []),
-	misultin:start_link([{port, ?Port}, {loop, fun(Req) -> handle_http(Req) end}]),
-	?ERROR_MSG("aa http init end", []),
-	{ok, #state{}}.
+    misultin:start_link([{port, ?Port}, {loop, fun(Req) -> handle_http(Req) end}]),
+    {ok, #state{}}.
 
 handle_call(_Request, _From, State) ->
     Reply = ok,
