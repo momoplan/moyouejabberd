@@ -307,9 +307,14 @@ handle_cast({update_user_group_info, GroupId, User, Seq}, State) ->
                 false ->
                     GroupInfo1 = GroupInfo#user_group_info{group_info_list = [{GroupId, Seq} | GroupInfoList]},
                     mnesia:dirty_write(user_group_info, GroupInfo1);
-                _ ->
-                    GroupInfo1 = GroupInfo#user_group_info{group_info_list = lists:keyreplace(GroupId, 1, GroupInfoList, {GroupId, Seq})},
-                    mnesia:dirty_write(user_group_info, GroupInfo1)
+                {value, {GroupId, Value}} ->
+                    if
+                        Seq > Value ->
+                            GroupInfo1 = GroupInfo#user_group_info{group_info_list = lists:keyreplace(GroupId, 1, GroupInfoList, {GroupId, Seq})},
+                            mnesia:dirty_write(user_group_info, GroupInfo1);
+                        true ->
+                            skip
+                    end
             end
     end,
     {noreply, State};
