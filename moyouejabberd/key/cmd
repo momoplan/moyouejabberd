@@ -1,0 +1,7 @@
+openssl x509 -in aps_development.cer -inform DER -out moyou_dev_cert.pem -outform PEM
+
+openssl pkcs12 -nocerts -nodes -in aps_development.p12  -out key_dev.pem
+
+openssl rsa -in key_dev.pem  -out moyou_dev_key.pem
+
+密码:my123456
