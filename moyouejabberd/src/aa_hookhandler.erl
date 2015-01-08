@@ -223,16 +223,21 @@ user_send_packet_handler(#jid{server = Domain}=From, To, Packet) ->
             {Tag, "message", Attr, Body} ->
                 ?INFO_MSG("user_send_packet_handler From : ~p~n, To : ~p~n, Packet : ~p~n",[From, To, Packet]),
                 MT = proplists:get_value("msgtype", Attr, ""),
+                {M, S, SS} = os:timestamp(),
+                MsgTime = lists:sublist(erlang:integer_to_list(M*1000000000000+S*1000000+SS), 1, 13),
+                Attr1 = [{K, V} || {K, V} <- Attr, K =/= "msgTime"],
+                Attr2 = [{"msgTime", MsgTime} | Attr1],
+                Packet1 = {Tag, "message", Attr2, Body},
                 if MT == "groupchat" andalso "gamepro.com" == Domain ->
                         GroupId = proplists:get_value("groupid", Attr, To#jid.user),
-                        Sid = store_group_message(From, GroupId, Packet),
-                        Attr1 = [{"server_id", Sid} | Attr],
-                        RPacket = {Tag, "message", Attr1, Body},
+                        Sid = store_group_message(From, GroupId, Packet1),
+                        Attr3 = [{"server_id", Sid} | Attr2],
+                        RPacket = {Tag, "message", Attr3, Body},
                         server_ack(From, To, RPacket),
                         spawn(?MODULE, send_group_msg_to_user, [From, GroupId, Sid, RPacket]);
                     true ->
-                        server_ack(From, To, Packet),
-                        send_message_to_user(From, To, Packet)
+                        server_ack(From, To, Packet1),
+                        send_message_to_user(From, To, Packet1)
                 end;
             _ ->
                 skip
@@ -297,18 +302,12 @@ send_group_msg_to_user(#jid{user = User, server = Domain} = From, GroupId, Sid, 
 
 
 send_message_to_user(#jid{user=FU, server = Domain} = From, #jid{user = ToUser} = To, Packet) ->
-    {_,"message",Attr,_} = Packet,
+    {_, "message", Attr, _} = Packet,
     D = dict:from_list(Attr),
     MT = case dict:is_key("msgtype",D) of true-> dict:fetch("msgtype",D); _-> "" end,
     SRC_ID_STR = case dict:is_key("id", D) of true -> dict:fetch("id", D); _ -> "" end,
     SYNCID = SRC_ID_STR ++ "@" ++ Domain,
     if MT=/=[],MT=/="msgStatus", MT=/="frienddynamicmsg",FU=/="messageack" ->
-            {M,S,SS} = os:timestamp(),
-            MsgTime = lists:sublist(erlang:integer_to_list(M*1000000000000+S*1000000+SS),1,13),
-            {Tag,E,Attr,Body} = Packet,
-            RAttr0 = [{K,V} || {K, V} <- Attr, K=/="msgTime"],
-            RAttr1 = [{"msgTime",MsgTime}|RAttr0],
-            RPacket = {Tag,E,RAttr1,Body},
             case if_group_msg(SRC_ID_STR) of
                 true ->
                     [_, GroupId, _] = re:split(SRC_ID_STR, "_", [{return, list}]),
@@ -316,7 +315,7 @@ send_message_to_user(#jid{user=FU, server = Domain} = From, #jid{user = ToUser} 
                     AckId = SRC_ID_STR ++ "_" ++ ToUser,
                     receive_ack(AckId, From, To, Packet);
                 _ ->
-                    store_message(SYNCID, From, To, RPacket),
+                    store_message(SYNCID, From, To, Packet),
                     receive_ack(SYNCID, From, To, Packet)
             end;
         MT=:="msgStatus", ToUser =/= "messageack" ->
@@ -398,6 +397,7 @@ handle_cast({server_ack, #jid{server=FD}, _To, Packet},State)->
     MT = case dict:is_key("msgtype",D) of true-> dict:fetch("msgtype",D); _-> "" end,
     SRC_ID_STR = case dict:is_key("id", D) of true -> dict:fetch("id", D); _ -> "" end,
     Sid = case dict:is_key("server_id", D) of true -> dict:fetch("server_id", D); _ -> "" end,
+    MsgTime = case dict:is_key("msgTime", D) of true -> dict:fetch("msgTime", D); _ -> "" end,
     if ( (MT=:="normalchat") or (MT=:="groupchat") ) ->
             case dict:is_key("from", D) of
                 true ->
@@ -408,6 +408,7 @@ handle_cast({server_ack, #jid{server=FD}, _To, Packet},State)->
                         {"from","messageack@"++Domain},
                         {"type","normal"},
                         {"msgtype",""},
+                        {"msgTime", MsgTime},
                         {"action","ack"} |
                         case Sid of
                             "" ->
