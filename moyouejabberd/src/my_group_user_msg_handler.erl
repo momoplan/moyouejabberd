@@ -168,21 +168,46 @@ handle_call({get_offline_msg, User}, _From, State) ->
                [] ->
                    [];
                [GroupInfo] ->
+                   GroupInfoList = GroupInfo#user_group_info.group_info_list,
                    lists:foldl(fun({GroupId, Seq}, Acc) ->
+                                       GroupInfo1 = GroupInfo#user_group_info{group_info_list = lists:keyreplace(GroupId, 1, GroupInfoList, {GroupId, Seq, Seq})},
+                                       mnesia:dirty_write(user_group_info, GroupInfo1),
+                                       {ok, Msg1} = my_group_msg_center:get_offline_msg(GroupId, Seq, User),
+                                       lists:append(Acc, Msg1);
+                                   ({GroupId, _Init, Seq}, Acc) ->
                                        {ok, Msg1} = my_group_msg_center:get_offline_msg(GroupId, Seq, User),
                                        lists:append(Acc, Msg1)
-                               end, [], GroupInfo#user_group_info.group_info_list)
+                               end, [], GroupInfoList)
            end,
     {reply, {ok, Msgs}, State};
 
 handle_call({query_group_msg, GroupId, Uid, Seq, Size}, _From, State) ->
-    List = if
-               Seq - Size > 0 ->
-                   lists:seq(Seq - Size, Seq - 1);
-               true ->
-                   lists:seq(1, Seq - 1)
-           end,
     [Domain | _] = ?MYHOSTS,
+    To = #jid{user = Uid, server = Domain, luser = Uid, lserver = Domain, resource = [], lresource = []},
+    List = case mnesia:dirty_read(user_group_info, To) of
+               [] ->
+                   [];
+               [GroupInfo] ->
+                   GroupInfoList = GroupInfo#user_group_info.group_info_list,
+                   case lists:keysearch(GroupId, 1, GroupInfoList) of
+                       false ->
+                           [];
+                       {value, {GroupId, Init, _Value}} ->
+                           if
+                               Seq - Init >= Size ->
+                                   lists:seq(Seq - Size, Seq - 1);
+                               Seq - Init < Size ->
+                                   if
+                                       Seq > Init ->
+                                           lists:seq(Init, Seq - 1);
+                                       true ->
+                                           []
+                                   end
+                           end;
+                       _ ->
+                           []
+                   end
+           end,
     Msgs = lists:foldl(fun(X, Acc) ->
                                Mid = id_prefix(GroupId) ++ integer_to_list(X),
                                case mnesia:dirty_read(group_message, Mid) of
@@ -197,13 +222,11 @@ handle_call({query_group_msg, GroupId, Uid, Seq, Size}, _From, State) ->
                                            [Content]  ->
                                                {_Key, From, PacketBin} = bitstring_to_term(Content),
                                                Packet = binary_to_term(PacketBin),
-                                               To = #jid{user = Uid, server = Domain, luser = Uid, lserver = Domain, resource = [], lresource = []},
                                                [#user_msg{id = Mid, from = From, to = To, packat = Packet} | Acc]
                                        end;
                                    [Data] ->
                                        Packet = Data#group_msg.packet,
                                        From = Data#group_msg.from,
-                                       To = #jid{user = Uid, server = Domain, luser = Uid, lserver = Domain, resource = [], lresource = []},
                                        [#user_msg{id = Mid, from = From, to = To, packat = Packet} | Acc]
                                end
                        end, [], List),

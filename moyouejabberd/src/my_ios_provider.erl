@@ -45,8 +45,10 @@ start(CertFile, KeyFile, Host) ->
     gen_server:start(?MODULE, [CertFile, KeyFile, Host], []).
 
 
-push(Pid, Tokens, Payload) ->
-    gen_server:cast(Pid, {push, Tokens, Payload}).
+push(Pid, Tokens, Alert) ->
+    gen_server:cast(Pid, {push, Tokens, #payload{alert = Alert,
+                                                 badge = 1,
+                                                 sound = "default"}}).
 
 
 %% ----------------------------------------------------

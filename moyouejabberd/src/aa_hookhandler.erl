@@ -86,7 +86,7 @@ deal_offline_msg(From, To, Packet) ->
             "msgStatus" ->
                 ok;
             _->
-                ?INFO_MSG("deal_offline_msg From : ~p~n To : ~p~n, Packet : ~p~n",[From, To, Packet]),
+                %                ?INFO_MSG("deal_offline_msg From : ~p~n To : ~p~n, Packet : ~p~n",[From, To, Packet]),
                 MID = case dict:is_key("id", D) of
                           true ->
                               dict:fetch("id", D);
@@ -148,7 +148,7 @@ send_offline_message(From ,To ,Packet,MID,MsgType,N) when N < 3 ->
                                 ok
                         end;
                     Other ->
-                        ?ERROR_MSG("send_offline_message failed, msgId : ~p, reason : ~p~n",[MID, Other]),
+                        %                        ?ERROR_MSG("send_offline_message failed, msgId : ~p, reason : ~p~n",[MID, Other]),
                         false
                 end ;
             {error, _Reason} ->
@@ -208,7 +208,7 @@ get_group_members(GroupId, Domain) ->
                     mnesia:dirty_write(?GOUPR_MEMBER_TABLE, Data),
                     {ok, UserList1};
                 Err ->
-                    ?INFO_MSG("get_group_members error : ~p~n",[Err])
+                    ?ERROR_MSG("get_group_members error : ~p~n",[Err])
             end;
         [#group_members{members = Members}] ->
             {ok, Members};
@@ -217,14 +217,14 @@ get_group_members(GroupId, Domain) ->
     end.
 
 
-user_send_packet_handler(#jid{server = Domain}=From, To, Packet) ->
+user_send_packet_handler(#jid{server = Domain} = From, To, Packet) ->
     try
         case Packet of
             {Tag, "message", Attr, Body} ->
-                ?INFO_MSG("user_send_packet_handler From : ~p~n, To : ~p~n, Packet : ~p~n",[From, To, Packet]),
+                %                ?INFO_MSG("user_send_packet_handler From : ~p~n, To : ~p~n, Packet : ~p~n",[From, To, Packet]),
                 MT = proplists:get_value("msgtype", Attr, ""),
                 {M, S, SS} = os:timestamp(),
-                MsgTime = lists:sublist(erlang:integer_to_list(M*1000000000000+S*1000000+SS), 1, 13),
+                MsgTime = lists:sublist(erlang:integer_to_list(M*1000000000000 + S*1000000 + SS), 1, 13),
                 Attr1 = [{K, V} || {K, V} <- Attr, K =/= "msgTime"],
                 Attr2 = [{"msgTime", MsgTime} | Attr1],
                 Packet1 = {Tag, "message", Attr2, Body},
@@ -390,7 +390,7 @@ handle_call(rebuild_pushpids, _From, State) ->
 handle_call(_Call, _From, State)->
     {reply, ok, State}.
 
-handle_cast({server_ack, #jid{server=FD}, _To, Packet},State)->
+handle_cast({server_ack, #jid{server = FD} = From, _To, Packet},State)->
     Domain = FD,
     {_,"message",Attr,_} = Packet,
     D = dict:from_list(Attr),
@@ -398,40 +398,35 @@ handle_cast({server_ack, #jid{server=FD}, _To, Packet},State)->
     SRC_ID_STR = case dict:is_key("id", D) of true -> dict:fetch("id", D); _ -> "" end,
     Sid = case dict:is_key("server_id", D) of true -> dict:fetch("server_id", D); _ -> "" end,
     MsgTime = case dict:is_key("msgTime", D) of true -> dict:fetch("msgTime", D); _ -> "" end,
+    FromStr = jlib:jid_to_string(From),
     if ( (MT=:="normalchat") or (MT=:="groupchat") ) ->
-            case dict:is_key("from", D) of
-                true ->
-                    From = dict:fetch("from", D),
-                    Attributes = [
-                        {"id",get_id()},
-                        {"to", From},
-                        {"from","messageack@"++Domain},
-                        {"type","normal"},
-                        {"msgtype",""},
-                        {"msgTime", MsgTime},
-                        {"action","ack"} |
-                        case Sid of
-                            "" ->
-                                [];
-                            _ ->
-                                [{"server_id", Sid}]
-                        end
-                                 ],
-                    Child = [{xmlelement, "body", [], [
-                        {xmlcdata, list_to_binary("{'src_id':'"++SRC_ID_STR++"','received':'true'}")}
-                                                      ]}],
-                    Answer = {xmlelement, "message", Attributes , Child},
-                    FF = jlib:string_to_jid(xml:get_tag_attr_s("from", Answer)),
-                    TT = jlib:string_to_jid(xml:get_tag_attr_s("to", Answer)),
-                    case catch ejabberd_router:route(FF, TT, Answer) of
-                        ok ->
-                            ?INFO_MSG("server_ack successed, SRC_ID_STR : ~p, From : ~p~n", [SRC_ID_STR, From]),
-                            answer;
-                        ERROR ->
-                            ?ERROR_MSG("server_ack failed, SRC_ID_STR : ~p, From : ~p, Error : ~p~n", [SRC_ID_STR, From, ERROR]),
-                            skip
-                    end;
-                _ ->
+            Attributes = [
+                {"id",get_id()},
+                {"to", FromStr},
+                {"from","messageack@"++Domain},
+                {"type","normal"},
+                {"msgtype",""},
+                {"msgTime", MsgTime},
+                {"action","ack"} |
+                case Sid of
+                    "" ->
+                        [];
+                    _ ->
+                        [{"server_id", Sid}]
+                end
+                         ],
+            Child = [{xmlelement, "body", [], [
+                {xmlcdata, list_to_binary("{'src_id':'" ++ SRC_ID_STR ++ "','received':'true'}")}
+                                              ]}],
+            Answer = {xmlelement, "message", Attributes , Child},
+            FF = jlib:string_to_jid(xml:get_tag_attr_s("from", Answer)),
+            TT = jlib:string_to_jid(xml:get_tag_attr_s("to", Answer)),
+            case catch ejabberd_router:route(FF, TT, Answer) of
+                ok ->
+                    ?INFO_MSG("server_ack successed, SRC_ID_STR : ~p, From : ~p~n", [SRC_ID_STR, From]),
+                    answer;
+                ERROR ->
+                    ?ERROR_MSG("server_ack failed, SRC_ID_STR : ~p, From : ~p, Error : ~p~n", [SRC_ID_STR, From, ERROR]),
                     skip
             end;
         true ->
@@ -491,7 +486,7 @@ ack_task({ack,ID})->
             ack_err
     end.
 
-ack_task(ID, From, To, Packet)->
+ack_task(ID, From, To, Packet) ->
     receive
         ack ->
             ets:delete(?ETS_ACK_TASK, ID)
