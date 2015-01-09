@@ -38,6 +38,7 @@
 
 -record(user_group_info, {user_id, group_info_list}).
 
+-record(cid_and_sid, {cid, sid}).
 
 start() ->
     gen_server:start(?MODULE, [], []).
@@ -233,32 +234,34 @@ handle_call({query_group_msg, GroupId, Uid, Seq, Size}, _From, State) ->
     {reply, {ok, Msgs}, State};
 
 handle_call({store_msg, GroupId, User, Packet}, _From, State) ->
-    Now = unixtime(),
-    ExpireTime = Now + 1 * 24 *3600,
-    Seq = get_id_seq(GroupId),
-    Id = id_prefix(GroupId) ++ integer_to_list(Seq),
     {Tag, "message", Attr, Body} = Packet,
-    Attr1 = case lists:keysearch("id", 1, Attr) of
-                false ->
-                    [{"id", Id} | Attr];
-                _ ->
-                    lists:keyreplace("id", 1, Attr, {"id", Id})
-            end,
-    Attr2 = lists:append(Attr1, [{"groupid", GroupId}]),
-    Attr3 = lists:append(Attr2, [{"g","0"}]),
-    Packet1 = {Tag, "message", Attr3, Body},
-    Data = #group_msg{
-        id = Id,
-        group_id = GroupId,
-        from = User,
-        packet = Packet1,
-        timestamp = Now,
-        expire_time = ExpireTime,
-        score = index_score()},
-    mnesia:dirty_write(group_message, Data),
-    mnesia:dirty_write(group_id_seq, #group_id_seq{group_id = GroupId, sequence = Seq}),
-    my_group_msg_center:update_user_group_info(User, GroupId, Seq),
-    {reply, {ok, Id}, State};
+    Cid = proplists:get_value("id", Attr),
+    case mnesia:dirty_read(cid_and_sid_tab, Cid) of
+        [_CidInfo] ->
+            {reply, {ok, repeat}, State};
+        _ ->
+            Now = unixtime(),
+            ExpireTime = Now + 1 * 24 *3600,
+            Seq = get_id_seq(GroupId),
+            Sid = id_prefix(GroupId) ++ integer_to_list(Seq),
+            Attr1 = lists:keyreplace("id", 1, Attr, {"id", Sid}),
+            Attr2 = lists:append(Attr1, [{"groupid", GroupId}]),
+            Attr3 = lists:append(Attr2, [{"g","0"}]),
+            Packet1 = {Tag, "message", Attr3, Body},
+            Data = #group_msg{
+                id = Sid,
+                group_id = GroupId,
+                from = User,
+                packet = Packet1,
+                timestamp = Now,
+                expire_time = ExpireTime,
+                score = index_score()},
+            mnesia:dirty_write(group_message, Data),
+            mnesia:dirty_write(cid_and_sid_tab, #cid_and_sid{cid = Cid, sid = {Sid, Now}}),
+            mnesia:dirty_write(group_id_seq, #group_id_seq{group_id = GroupId, sequence = Seq}),
+            my_group_msg_center:update_user_group_info(User, GroupId, Seq),
+            {reply, {ok, Sid}, State}
+    end;
 
 handle_call(_Request, _From, State) ->
     Reply = ok,

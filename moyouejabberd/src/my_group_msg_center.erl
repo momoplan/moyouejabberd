@@ -21,6 +21,8 @@
 
 -record(user_group_info, {user_id, group_info_list}).
 
+-record(cid_and_sid, {cid, sid}).
+
 %% ====================================================================
 %% API functions
 %% ====================================================================
@@ -175,6 +177,9 @@ init([]) ->
                                                 {ram_copies, [node()]}], ram_copies),
             create_or_copy_table(user_group_info, [{record_name, user_group_info},
                                                    {attributes, record_info(fields, user_group_info)},
+                                                   {ram_copies, [node()]}], ram_copies),
+            create_or_copy_table(cid_and_sid_tab, [{record_name, cid_and_sid},
+                                                   {attributes, record_info(fields, cid_and_sid)},
                                                    {ram_copies, [node()]}], ram_copies);
         _ ->
             skip
@@ -280,7 +285,8 @@ sync_deliver_group_task(Task, Pid, GroupId, Args) ->
     try
         deliver(Task, Pid, Args)
     catch
-        _ErrorType:_ErrorReason ->
+        ErrorType:ErrorReason ->
+            ?ERROR_MSG("my_group_msg_center sync_deliver_group_task : ~p error, type : ~p, reason : ~p~n", [Task, ErrorType, ErrorReason]),
             {ok, NewPid} = gen_server:call(?MODULE, {attach_new_group_pid, GroupId}),
             sync_deliver_group_task(Task, NewPid, GroupId, Args)
     end.
@@ -289,7 +295,8 @@ sync_deliver_task(Task, Pid, Uid, Args) ->
     try
         deliver(Task, Pid, Args)
     catch
-        _ErrorType:_ErrorReason ->
+        ErrorType:ErrorReason ->
+            ?ERROR_MSG("my_group_msg_center sync_deliver_task : ~p error, type : ~p, reason : ~p~n", [Task, ErrorType, ErrorReason]),
             {ok, NewPid} = gen_server:call(?MODULE, {attach_new_user_pid, Uid}),
             sync_deliver_task(Task, NewPid, Uid, Args)
     end.

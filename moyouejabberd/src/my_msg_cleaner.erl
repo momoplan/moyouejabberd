@@ -9,6 +9,9 @@
 -define(CLEAN_CYCLE, 86400000).
 -define(CLEAN_MSG, clean_offline_msg).
 
+
+-record(cid_and_sid, {cid, sid}).
+
 -include("jlib.hrl").
 -include("ejabberd.hrl").
 
@@ -164,12 +167,19 @@ clean_group_message() ->
     SelfNode = node(),
     case catch mnesia:table_info(group_id_seq, where_to_write) of
         [SelfNode | _] ->
+            Now = unixtime(),
+            Keys = mnesia:dirty_select(cid_and_sid_tab, [{#cid_and_sid{cid = '$1', sid = {'_', '$2'}}, [{'=<', '$2', Now - 10800}], ['$1']}]),
+            [mnesia:dirty_delete(cid_and_sid_tab, Key) || Key <- Keys],
             Gids = mnesia:dirty_all_keys(group_id_seq),
             [my_group_msg_center:dump(Gid) || Gid <- Gids];
         _ ->
             skip
     end.
 
+
+unixtime() ->
+    {M, S, _} = erlang:now(),
+    M * 1000000 + S.
 
 clean_message() ->
     [Domain|_] = ?MYHOSTS,

@@ -147,8 +147,7 @@ send_offline_message(From ,To ,Packet,MID,MsgType,N) when N < 3 ->
                             _ ->
                                 ok
                         end;
-                    Other ->
-                        %                        ?ERROR_MSG("send_offline_message failed, msgId : ~p, reason : ~p~n",[MID, Other]),
+                    _Other ->
                         false
                 end ;
             {error, _Reason} ->
@@ -230,11 +229,15 @@ user_send_packet_handler(#jid{server = Domain} = From, To, Packet) ->
                 Packet1 = {Tag, "message", Attr2, Body},
                 if MT == "groupchat" andalso "gamepro.com" == Domain ->
                         GroupId = proplists:get_value("groupid", Attr, To#jid.user),
-                        Sid = store_group_message(From, GroupId, Packet1),
-                        Attr3 = [{"server_id", Sid} | Attr2],
-                        RPacket = {Tag, "message", Attr3, Body},
-                        server_ack(From, To, RPacket),
-                        spawn(?MODULE, send_group_msg_to_user, [From, GroupId, Sid, RPacket]);
+                        case store_group_message(From, GroupId, Packet1) of
+                            repeat ->
+                                skip;
+                            Sid ->
+                                Attr3 = [{"server_id", Sid} | Attr2],
+                                RPacket = {Tag, "message", Attr3, Body},
+                                server_ack(From, To, RPacket),
+                                spawn(?MODULE, send_group_msg_to_user, [From, GroupId, Sid, RPacket])
+                        end;
                     true ->
                         server_ack(From, To, Packet1),
                         send_message_to_user(From, To, Packet1)
