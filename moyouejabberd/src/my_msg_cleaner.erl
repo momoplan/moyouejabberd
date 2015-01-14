@@ -159,6 +159,7 @@ code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 
+
 %% ====================================================================
 %% Internal functions
 %% ====================================================================
@@ -171,10 +172,19 @@ clean_group_message() ->
             Keys = mnesia:dirty_select(cid_and_sid_tab, [{#cid_and_sid{cid = '$1', sid = {'_', '$2'}}, [{'=<', '$2', Now - 10800}], ['$1']}]),
             [mnesia:dirty_delete(cid_and_sid_tab, Key) || Key <- Keys],
             Gids = mnesia:dirty_all_keys(group_id_seq),
-            [my_group_msg_center:dump(Gid) || Gid <- Gids];
+            clean_group_msg1(Gids, 100);
         _ ->
             skip
     end.
+
+clean_group_msg1([], _Num) ->
+    ok;
+clean_group_msg1(Gids, 0) ->
+    timer:sleep(2000),
+    clean_group_msg1(Gids, 100);
+clean_group_msg1([Gid | T], Num) ->
+    my_group_msg_center:dump(Gid),
+    clean_group_msg1(T, Num - 1).
 
 
 unixtime() ->

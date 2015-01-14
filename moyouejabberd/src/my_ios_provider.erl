@@ -10,7 +10,7 @@
          terminate/2]).
 
 -export([start/3,
-         push/3]).
+         push/4]).
 
 
 -export([start/0,
@@ -45,10 +45,10 @@ start(CertFile, KeyFile, Host) ->
     gen_server:start(?MODULE, [CertFile, KeyFile, Host], []).
 
 
-push(Pid, Tokens, Alert) ->
+push(Pid, Tokens, Sound, Alert) ->
     gen_server:cast(Pid, {push, Tokens, #payload{alert = Alert,
                                                  badge = 1,
-                                                 sound = "default"}}).
+                                                 sound = Sound}}).
 
 
 %% ----------------------------------------------------
@@ -88,6 +88,7 @@ handle_cast({push, Token, Payload}, #state{socket = undefined,
                                            host = Host,
                                            certfile = CertFile,
                                            keyfile = KeyFile} = State) ->
+                                       
     case create_socket(CertFile, KeyFile, Host) of
         {error, Reason} ->
             ?ERROR_MSG("lost push message : ~p, create socket error reason : ~p~n", [Payload, Reason]),
@@ -208,7 +209,7 @@ push_test(Pid) ->
     Payload = #payload{alert = "123456:[发怒]",
                        badge = 1,
                        sound = "default"},
-    push(Pid, Token, Payload).
+    push(Pid, Token, "default", Payload).
 
 
 start() ->

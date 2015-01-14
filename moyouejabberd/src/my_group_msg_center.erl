@@ -17,7 +17,7 @@
 
 -record(group_msg, {id, group_id, from, packet, timestamp, expire_time, score}).
 
--record(group_id_seq, {group_id, sequence = 0}).
+-record(group_id_seq, {group_id, sequence = 0, dump_seq = 0}).
 
 -record(user_group_info, {user_id, group_info_list}).
 
@@ -35,6 +35,7 @@
          delete_group_msg/2,
          get_offline_msg/1,
          get_offline_msg/3,
+         query_group_id/1,
          query_group_msg/4,
          clear_user_group_info/2,
          dump/1
@@ -59,6 +60,14 @@ dump(GroupId) ->
             sync_deliver_group_task(dump, Pid, GroupId, {GroupId})
     end.
     
+query_group_id(GroupId) ->
+    case ets:lookup(my_group_msgpid_info, GroupId) of
+        [] ->
+            {ok, Pid} = gen_server:call(?MODULE, {attach_new_group_pid, GroupId}),
+            sync_deliver_group_task(query_group_id, Pid, GroupId, {GroupId});
+        [{GroupId, Pid}] ->
+            sync_deliver_group_task(query_group_id, Pid, GroupId, {GroupId})
+    end.
 
 query_group_msg(GroupId, Uid, Seq, Size) ->
     case ets:lookup(my_group_msgpid_info, GroupId) of
@@ -326,6 +335,9 @@ deliver(delete_group_msg, Pid, {GroupId, Sid}) ->
 
 deliver(query_group_msg, Pid, {GroupId, Uid, Seq, Size}) ->
     my_group_user_msg_handler:query_group_msg(Pid, GroupId, Uid, Seq, Size);
+
+deliver(query_group_id, Pid, {GroupId}) ->
+    my_group_user_msg_handler:query_group_id(Pid, GroupId);
 
 deliver(dump, Pid, {GroupId}) ->
     my_group_user_msg_handler:dump(Pid, GroupId).

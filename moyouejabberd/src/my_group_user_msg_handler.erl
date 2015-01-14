@@ -24,6 +24,7 @@
          update_user_group_info/4,
          delete_group_msg/3,
          clear_user_group_info/3,
+         query_group_id/2,
          query_group_msg/5,
          dump/2
         ]).
@@ -34,7 +35,7 @@
 
 -record(group_msg, {id, group_id, from, packet, timestamp, expire_time, score}).
 
--record(group_id_seq, {group_id, sequence = 0}).
+-record(group_id_seq, {group_id, sequence = 0, dump_seq = 0}).
 
 -record(user_group_info, {user_id, group_info_list}).
 
@@ -54,6 +55,9 @@ get_offline_msg(Pid, GroupId, Seq, User) ->
 
 delete_group_msg(Pid, GroupId, Sid) ->
     gen_server:cast(Pid, {delete_group_msg, GroupId, Sid}).
+
+query_group_id(Pid, GroupId) ->
+    gen_server:call(Pid, {query_group_id, GroupId}).
 
 query_group_msg(Pid, GroupId, Uid, Seq, Size) ->
     gen_server:call(Pid, {query_group_msg, GroupId, Uid, Seq, Size}).
@@ -87,24 +91,32 @@ get_current_seq(GroupId) ->
     case mnesia:dirty_read(group_id_seq, GroupId) of
         [] ->
             0;
-        [{group_id_seq, GroupId, Sequence}] ->
-            Sequence
+        [GroupSeqInfo] ->
+            GroupSeqInfo#group_id_seq.sequence
+    end.
+
+get_current_seq_info(GroupId) ->
+    case mnesia:dirty_read(group_id_seq, GroupId) of
+        [] ->
+            #group_id_seq{group_id = GroupId, sequence = 0, dump_seq = 0};
+        [GroupSeqInfo] ->
+            GroupSeqInfo
     end.
 
 get_id_seq(GroupId) ->
     case mnesia:dirty_read(group_id_seq, GroupId) of
         [] ->
-            1;
-        [{group_id_seq, GroupId, Sequence}] ->
-            Sequence + 1
+            #group_id_seq{group_id = GroupId, sequence = 1, dump_seq = 0};
+        [GroupSeqInfo] ->
+            GroupSeqInfo#group_id_seq{sequence = GroupSeqInfo#group_id_seq.sequence + 1}
     end.
 
 back_id_seq(GroupId) ->
     case mnesia:dirty_read(group_id_seq, GroupId) of
         [] ->
             skip;
-        [{group_id_seq, GroupId, Sequence}] ->
-            mnesia:dirty_write(group_id_seq, #group_id_seq{group_id = GroupId, sequence = Sequence - 1})
+        [GroupSeqInfo] ->
+            mnesia:dirty_write(group_id_seq, GroupSeqInfo#group_id_seq{sequence = GroupSeqInfo#group_id_seq.sequence - 1})
     end.
 
 %% ====================================================================
@@ -182,6 +194,10 @@ handle_call({get_offline_msg, User}, _From, State) ->
            end,
     {reply, {ok, Msgs}, State};
 
+handle_call({query_group_id, GroupId}, _From, State) ->
+    CurrentSeq = get_current_seq(GroupId),
+    {reply, {ok, CurrentSeq}, State};
+
 handle_call({query_group_msg, GroupId, Uid, Seq, Size}, _From, State) ->
     [Domain | _] = ?MYHOSTS,
     To = #jid{user = Uid, server = Domain, luser = Uid, lserver = Domain, resource = [], lresource = []},
@@ -242,8 +258,8 @@ handle_call({store_msg, GroupId, User, Packet}, _From, State) ->
         _ ->
             Now = unixtime(),
             ExpireTime = Now + 1 * 24 *3600,
-            Seq = get_id_seq(GroupId),
-            Sid = id_prefix(GroupId) ++ integer_to_list(Seq),
+            SeqInfo = get_id_seq(GroupId),
+            Sid = id_prefix(GroupId) ++ integer_to_list(SeqInfo#group_id_seq.sequence),
             Attr1 = lists:keyreplace("id", 1, Attr, {"id", Sid}),
             Attr2 = lists:append(Attr1, [{"groupid", GroupId}]),
             Attr3 = lists:append(Attr2, [{"g","0"}]),
@@ -258,8 +274,8 @@ handle_call({store_msg, GroupId, User, Packet}, _From, State) ->
                 score = index_score()},
             mnesia:dirty_write(group_message, Data),
             mnesia:dirty_write(cid_and_sid_tab, #cid_and_sid{cid = Cid, sid = {Sid, Now}}),
-            mnesia:dirty_write(group_id_seq, #group_id_seq{group_id = GroupId, sequence = Seq}),
-            my_group_msg_center:update_user_group_info(User, GroupId, Seq),
+            mnesia:dirty_write(group_id_seq, SeqInfo),
+            my_group_msg_center:update_user_group_info(User, GroupId, SeqInfo#group_id_seq.sequence),
             {reply, {ok, Sid}, State}
     end;
 
@@ -269,16 +285,17 @@ handle_call(_Request, _From, State) ->
 
 
 handle_cast({dump, GroupId}, State) ->
-    Messages = mnesia:dirty_match_object(group_message, #group_msg{group_id = GroupId, _ = '_'}),
+    ?INFO_MSG("rcv dump group msg call ~p", [GroupId]),
+    SeqInfo = get_current_seq_info(GroupId),
+    Diff = SeqInfo#group_id_seq.sequence - SeqInfo#group_id_seq.dump_seq,
     if
-        length(Messages) > 100 ->
-            CurrentSeq = get_current_seq(GroupId),
-            KeepList = [id_prefix(GroupId) ++ integer_to_list(Seq) || Seq <- lists:seq(CurrentSeq - 99, CurrentSeq)],
+        Diff > 100 ->
+            DumpIds = [id_prefix(GroupId) ++ integer_to_list(Seq) || Seq <- lists:seq(SeqInfo#group_id_seq.dump_seq + 1, SeqInfo#group_id_seq.sequence - 100)],
             [begin
-                 case lists:member(Message#group_msg.id, KeepList) of
-                     true ->
+                 case mnesia:dirty_read(group_id_seq, DumpId) of
+                     [] ->
                          skip;
-                     _ ->
+                     [Message] ->
                          Sql = "insert into group_message(`group_id`, `mid`, `content`, `createDate`) values",
                          #group_msg{id = Key, from = From, packet = Packet, timestamp = TimeStamp} = Message,
                          Ts = case TimeStamp of
@@ -292,10 +309,12 @@ handle_cast({dump, GroupId}, State) ->
                          catch db_sql:execute(Sql ++ Values),
                          mnesia:dirty_delete(group_message, Key)
                  end
-             end || Message <- Messages];
+             end || DumpId <- DumpIds],
+            mnesia:dirty_write(group_id_seq, SeqInfo#group_id_seq{dump_seq = SeqInfo#group_id_seq.sequence - 100});
         true ->
             skip
     end,
+    ?INFO_MSG("rcv dump group msg finish! ~p", [GroupId]),
     {noreply, State};
 
 handle_cast({delete_group_msg, GroupId, Sid}, State) ->

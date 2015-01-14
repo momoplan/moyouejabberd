@@ -28,7 +28,8 @@
     stop/0,
     get_offline_msg/1,
     reinit_pushpids/0,
-    get_group_data_node/0
+    get_group_data_node/0,
+    get_offline_data_node/0
 	]).
 
 start_link() ->
@@ -50,119 +51,30 @@ reinit_pushpids() ->
 rlcfg() ->
     gen_server:call(?MODULE, reload_config).
 
-%% Message 有时是长度大于1的列表，所以这里要遍历
-%% 如果列表中有多个要提取的关键字，我就把他们组合成一个 List
-%% 大部分时间 List 只有一个元素
-feach_message([Element|Message],List) ->
-    case Element of
-        {xmlelement,"body",_,_} ->
-            feach_message(Message,[get_text_message_form_packet_result(Element)|List]);
-        _ ->
-            feach_message(Message,List)
-    end;
-feach_message([],List) ->
-    List.
-
-%% 获取消息包中的文本消息，用于离线消息推送服务
-get_text_message_from_packet( Packet )->
-    {xmlelement,"message",_,Message } = Packet,
-    %% Message 结构不固定，需要遍历
-    List = feach_message(Message,[]),
-    List.
-
-%% 获取消息包中的文本消息，用于离线消息推送服务
-get_text_message_form_packet_result( Body )->
-    {xmlelement,"body",_,List} = Body,
-    Res = lists:map(fun({_,V})-> binary_to_list(V) end,List),
-    ResultMessage = binary_to_list(list_to_binary(Res)),
-    ResultMessage.
 
 deal_offline_msg(From, To, Packet) ->
     try
-        {xmlelement,"message",Header,_ } = Packet,
+        {xmlelement, "message", Header, _} = Packet,
         D = dict:from_list(Header),
         V = dict:fetch("msgtype", D),
         case V of
             "msgStatus" ->
                 ok;
             _->
-                %                ?INFO_MSG("deal_offline_msg From : ~p~n To : ~p~n, Packet : ~p~n",[From, To, Packet]),
-                MID = case dict:is_key("id", D) of
-                          true ->
-                              dict:fetch("id", D);
-                          _ -> ""
-                      end,
-                send_offline_message( From, To, Packet, MID,V )
+                send_offline_message(From, To, Packet)
         end
     catch
         _:_ -> ok
     end.
 
-%% 将 Packet 中的 Text 消息 Post 到指定的 Http 服务
-%% IOS 消息推送功能
-send_offline_message(From ,To ,Packet,MID,MsgType) ->
-    send_offline_message(From,To,Packet,MID,MsgType,0).
-send_offline_message(From ,To ,Packet,MID,MsgType,N) when N < 3 ->
-    {jid,FromUser,Domain,_,_,_,_} = From ,
-    {jid,ToUser,_,_,_,_,_} = To ,
-    %% 取自配置文件 ejabberd.cfg
-    HTTPServer =  ejabberd_config:get_local_option({http_server,Domain}),
-    %% 取自配置文件 ejabberd.cfg
-    HTTPService = ejabberd_config:get_local_option({http_server_service_client,Domain}),
-    HTTPTarget = string:concat(HTTPServer,HTTPService),
-    Msg = get_text_message_from_packet( Packet ),
-    {Service,Method,FN,TN,MSG,MSG_ID,MType} = {
-        list_to_binary("service.uri.pet_user"),
-        list_to_binary("pushMsgApn"),
-        list_to_binary(FromUser),
-        list_to_binary(ToUser),
-        list_to_binary(Msg),
-        list_to_binary(MID),
-        list_to_binary(MsgType)
-                                              },
-    Gid = case MsgType of
-              "groupchat" ->
-                  {xmlelement,"message",Header,_ } = Packet,
-                  D = dict:from_list(Header),
-                  GroupID = dict:fetch("groupid", D),
-                  list_to_binary(GroupID);
-              _ ->
-                  <<"">>
-          end,
-    ParamObj={obj,[
-        {"service",Service},
-        {"method",Method},
-        {"channel",list_to_binary("9")},
-        {"params",{obj,[{"msgtype",MType},{"fromname",FN},{"toname",TN},{"msg",MSG},{"id",MSG_ID},{"groupid",Gid}]} }
-                  ]},
-    Form = "body="++http_uri:encode( rfc4627:encode(ParamObj) ),
-    try
-        case httpc:request(post,{ HTTPTarget ,[], ?HTTP_HEAD , Form },[],[] ) of
-            {ok, {_,_,Body}} ->
-                case rfc4627:decode(Body) of
-                    {ok,Obj,_Re} ->
-                        case rfc4627:get_field(Obj,"success") of
-                            {ok,false} ->
-                                rfc4627:get_field(Obj,"entity");
-                            _ ->
-                                ok
-                        end;
-                    _Other ->
-                        false
-                end ;
-            {error, _Reason} ->
-                timer:sleep(200),
-                send_offline_message(From,To,Packet,MID,MsgType,N + 1)
-        end
-    catch
-        _:_ ->
-            timer:sleep(200),
-            send_offline_message(From,To,Packet,MID,MsgType,N + 1)
-    end,
-    ok;
-send_offline_message(From ,To ,Packet,MID,MsgType, 3) ->
-    ?ERROR_MSG("send_offline_message failed, lost msg : ~p",[{From ,To ,Packet, MID, MsgType}]),
-    ok.
+%%离线消息推送
+send_offline_message(From, To, Packet) ->
+    case get_offline_data_node() of
+        none ->
+            skip;
+        Node ->
+            rpc:cast(Node, my_offline_msg_center, send_offline_msg, [From, To, Packet])
+    end.
 
 
 get_user_list_by_group_id(Domain, GroupId)->
@@ -666,6 +578,16 @@ get_group_msg(User) ->
                 Result ->
                     Result
             end
+    end.
+
+
+get_offline_data_node() ->
+    case catch mnesia:table_info(user_info_tab, where_to_write) of
+        [Node|_] ->
+            Node;
+        Reason ->
+            ?ERROR_MSG("get_offline_data_node failed, Reason : ~p~n",[Reason]),
+            none
     end.
 
 

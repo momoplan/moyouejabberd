@@ -20,22 +20,52 @@
                 ios_push_host,
                 ios_push_handlers = []}).
 
--record(user_info, {uid, friends, nick_name, device_token, imei, app_type, blacks}).
+-record(user_info, {uid, friends = [], nick_name, device_token, imei, blacks = [], silence_config = 0, message_config = 1}).
 
--record(moyou_group_info, {gid, name}).
+-record(moyou_group_info, {gid, name, not_push = []}).
 
 %% ====================================================================
 %% API functions
 %% ====================================================================
 -export([start_link/0,
-         send_offline_msg/3
+         list/0,
+         update_group_info/3,
+         update_user_info/8,
+         send_offline_msg/3,
+         test_normal_msg/0,
+         test_group_msg/0
         ]).
 
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
+list() ->
+    gen_server:call(?MODULE, {list}).
+
+update_group_info(Gid, GroupName, NotPush) ->
+    case mnesia:dirty_read(group_info_tab, Gid) of
+        [] ->
+            GroupInfo = #moyou_group_info{gid = Gid, name = GroupName, not_push = NotPush},
+            mnesia:dirty_write(group_info_tab, GroupInfo);
+        [GroupInfo] ->
+            mnesia:dirty_write(group_info_tab, GroupInfo#moyou_group_info{name = GroupName, not_push = NotPush})
+    end.
+
+update_user_info(Uid, Friends, NickName, DeviceToken, Imei, Blacks, SilenceConfig, MessageConfig) ->
+    case mnesia:dirty_read(user_info_tab, Uid) of
+        [] ->
+            UserInfo = #user_info{uid = Uid, friends = Friends, nick_name = NickName, blacks = Blacks,
+                                  imei = Imei, device_token = DeviceToken, silence_config = SilenceConfig,
+                                  message_config = MessageConfig},
+            mnesia:dirty_write(user_info_tab, UserInfo);
+        [UserInfo] ->
+            mnesia:dirty_write(user_info_tab, UserInfo#user_info{friends = Friends, nick_name = NickName, blacks = Blacks,
+                                                                 imei = Imei, device_token = DeviceToken, silence_config = SilenceConfig,
+                                                                 message_config = MessageConfig})
+    end.
 
 send_offline_msg(From, To, {xmlelement, "message", Attr, _Body} = Packet) ->
+    ?INFO_MSG("send_offline_msg From : ~p~n, To : ~p~n, Packet : ~p~n", [From, To, Packet]),
     FromUserInfo = get_user_info(From),
     ToUserInfo = get_user_info(To),
     if
@@ -53,20 +83,43 @@ send_offline_msg(From, To, {xmlelement, "message", Attr, _Body} = Packet) ->
                                     skip;
                                 Token ->
                                     %%ios推送
+                                    Sound = case ToUserInfo#user_info.silence_config of
+                                                0 ->
+                                                    "default";
+                                                _ ->
+                                                    null
+                                            end,
                                     Mt = proplists:get_value("msgtype", Attr, ""),
                                     Alert = case Mt of
                                                 "groupchat" ->
+                                                    {ok, Entity, _} = rfc4627:decode(hd(Content)),
+                                                    {ok, MsgBin} = rfc4627:get_field(Entity, "content"),
                                                     Gid = proplists:get_value("groupid", Attr, ""),
-                                                    GName = get_group_name(Gid, From),
-                                                    Name ++ "(" ++ GName ++ "):" ++ Content;
+                                                    GroupInfo = get_group_info(Gid, From),
+                                                    case lists:member(ToUserInfo#user_info.uid, GroupInfo#moyou_group_info.not_push) of
+                                                        true ->
+                                                            skip;
+                                                        _ ->
+                                                            case ToUserInfo#user_info.message_config of
+                                                                0 ->
+                                                                    "您有一条新的陌游消息！";
+                                                                _ ->
+                                                                    Name ++ "(" ++ GroupInfo#moyou_group_info.name ++ "):" ++ binary_to_list(MsgBin)
+                                                            end
+                                                    end;
                                                 _ ->
-                                                    Name ++ ":" ++ Content
+                                                    case ToUserInfo#user_info.message_config of
+                                                        0 ->
+                                                            "您有一条新的陌游消息！";
+                                                        _ ->
+                                                            Name ++ ":" ++ Content
+                                                    end
                                             end,
-                                    push_to_ios(Token, Alert)
+                                    push_to_ios(Token, Sound, Alert)
                             end;
                         Imei ->
                             %%android推送
-                            PushTo = #jid{user = Imei, server = "push.gamepro.com", luser = Imei, lserver = "push.gamepro.com"},
+                            PushTo = #jid{user = Imei, server = "push.gamepro.com", resource = [], luser = Imei, lserver = "push.gamepro.com", lresource = []},
                             Mt = proplists:get_value("msgtype", Attr, ""),
                             ID = proplists:get_value("id", Attr, ""),
                             PushAttr = [{"id", aa_hookhandler:get_id()},
@@ -75,27 +128,45 @@ send_offline_msg(From, To, {xmlelement, "message", Attr, _Body} = Packet) ->
                                         {"msgtype", Mt}],
                             Json = case Mt of
                                        "groupchat" ->
+                                           {ok, Entity, _} = rfc4627:decode(hd(Content)),
+                                           {ok, MsgBin} = rfc4627:get_field(Entity, "content"),
+                                           NameBin = list_to_binary(Name),
                                            Gid = proplists:get_value("groupid", Attr, ""),
-                                           GName = get_group_name(Gid, From),
-                                           {obj, [{"id", list_to_binary(ID)},
-                                                  {"expire", <<"604800">>},
-                                                  {"body", list_to_binary(Content)},
-                                                  {"msgtype", list_to_binary(proplists:get_value("msgtype", Attr, ""))},
-                                                  {"from", list_to_binary(FromUserInfo#user_info.uid)},
-                                                  {"body", {obj, [{"groupId", list_to_binary(Gid)},
-                                                                  {"groupName", list_to_binary(GName)},
-                                                                  {"msg", Name ++ ":" ++ Content}]}}]};
+                                           GroupInfo = get_group_info(Gid, From),
+                                           case lists:member(ToUserInfo#user_info.uid, GroupInfo#moyou_group_info.not_push) of
+                                               true ->
+                                                   skip;
+                                               _ ->
+                                                   {obj, [{"id", list_to_binary(ID)},
+                                                          {"expire", <<"604800">>},
+                                                          {"msgtype", list_to_binary(Mt)},
+                                                          {"from", list_to_binary(FromUserInfo#user_info.uid)},
+                                                          {"body", {obj, [{"groupId", list_to_binary(Gid)},
+                                                                          {"groupName", list_to_binary(GroupInfo#moyou_group_info.name)},
+                                                                          {"msg", <<NameBin/binary, <<":">>/binary, MsgBin/binary>>}]}
+                                                          }]}
+                                           end;
                                        _ ->
                                            {obj, [{"id", list_to_binary(ID)},
                                                   {"expire", <<"604800">>},
-                                                  {"body", list_to_binary(Content)},
-                                                  {"msgtype", list_to_binary(proplists:get_value("msgtype", Attr, ""))},
+                                                  {"body", case ToUserInfo#user_info.message_config of
+                                                               0 ->
+                                                                   list_to_binary("您有一条新的陌游消息！");
+                                                               _ ->
+                                                                   list_to_binary(Name ++ ":" ++ Content)
+                                                           end},
+                                                  {"msgtype", list_to_binary(Mt)},
                                                   {"from", list_to_binary(FromUserInfo#user_info.uid)}]}
                                    end,
-                            CDATA = rfc4627:encode(Json),
-                            PushBody = {xmlelement, "body", [], [{xmlcdata, CDATA}]},
-                            PushPacket = {xmlelement, "message", PushAttr, PushBody},
-                            ejabberd_router:route(From, PushTo, PushPacket)
+                            case Json of
+                                skip ->
+                                    skip;
+                                _ ->
+                                    CDATA = rfc4627:encode(Json),
+                                    PushBody = {xmlelement, "body", [], [{xmlcdata, list_to_binary(CDATA)}]},
+                                    PushPacket = {xmlelement, "message", PushAttr, [PushBody]},
+                                    ejabberd_router:route(From, PushTo, PushPacket)
+                            end
                     end
             end;
         true ->
@@ -103,9 +174,11 @@ send_offline_msg(From, To, {xmlelement, "message", Attr, _Body} = Packet) ->
     end.
 
 
-push_to_ios(Token, Alert) ->
+push_to_ios(_Token, _Sound, skip) ->
+    skip;
+push_to_ios(Token, Sound, Alert) ->
     {ok, Pid} = gen_server:call(?MODULE, {random_ios_push_pid}),
-    my_ios_provider:push(Pid, Token, Alert).
+    my_ios_provider:push(Pid, Token, Sound, Alert).
     
 
 get_msg_content({xmlelement, "message", _, Message}) ->
@@ -142,14 +215,14 @@ get_nickname_or_alia(#user_info{nick_name = NickName, friends = Friends}, #user_
     end.
 
 
-get_group_name(Gid, #jid{server = Domain}) ->
+get_group_info(Gid, #jid{server = Domain}) ->
     case mnesia:dirty_read(group_info_tab, Gid) of
         [] ->
             HTTPServer =  ejabberd_config:get_local_option({http_server, Domain}),
             HTTPService = ejabberd_config:get_local_option({http_server_service_client, Domain}),
             Url = string:concat(HTTPServer, HTTPService),
             ParamObj = {obj, [{"method", list_to_binary("getGroupInfo")},
-                              {"groupId", list_to_binary(Gid)}
+                              {"params", {obj, [{"groupId", list_to_binary(Gid)}]}}
                              ]},
             Form = "body=" ++ rfc4627:encode(ParamObj),
             try
@@ -158,33 +231,34 @@ get_group_name(Gid, #jid{server = Domain}) ->
                         DBody = rfc4627:decode(Body),
                         case DBody of
                             {ok, Obj, _Re} ->
-                                case rfc4627:get_field(Obj, "errorCode") of
-                                    {ok, <<"0">>} ->
-                                        {ok, ValueObj} = rfc4627:get_field(Obj, "value"),
-                                        Name = case rfc4627:get_field(ValueObj, "name") of
-                                                   {ok, BinName} ->
-                                                       binary_to_list(BinName);
-                                                   _ ->
-                                                       ""
-                                               end,
-                                        UserInfo = #moyou_group_info{gid = Gid, name = Name},
-                                        mnesia:dirty_write(group_info_tab, UserInfo),
-                                        UserInfo#moyou_group_info.name;
+                                case rfc4627:get_field(Obj, "success") of
+                                    {ok, true} ->
+                                        {ok, Entity} = rfc4627:get_field(Obj, "entity"),
+                                        {ok, GroupName} = rfc4627:get_field(Entity, "groupName"),
+                                        NotPush = case rfc4627:get_field(Entity, "notPushUserids") of
+                                                      {ok, NotPushList} ->
+                                                          [binary_to_list(Bin) || Bin <- NotPushList];
+                                                      _ ->
+                                                          []
+                                                  end,
+                                        GroupInfo = #moyou_group_info{gid = Gid, name = binary_to_list(GroupName), not_push = NotPush},
+                                        mnesia:dirty_write(group_info_tab, GroupInfo),
+                                        GroupInfo;
                                     _ ->
-                                        []
+                                        #moyou_group_info{gid = Gid}
                                 end;
                             _ ->
-                                []
+                                #moyou_group_info{gid = Gid}
                         end ;
                     {error, _Reason} ->
-                        []
+                        #moyou_group_info{gid = Gid}
                 end
             catch
                 _ErrType:_ErrReason->
-                    []
+                    #moyou_group_info{gid = Gid}
             end;
-        [GrooupInfo] ->
-            GrooupInfo#moyou_group_info.name
+        [GroupInfo] ->
+            GroupInfo
     end.
 
 get_user_info(#jid{server = Domain} = User) ->
@@ -195,7 +269,7 @@ get_user_info(#jid{server = Domain} = User) ->
             HTTPService = ejabberd_config:get_local_option({http_server_service_client, Domain}),
             Url = string:concat(HTTPServer, HTTPService),
             ParamObj = {obj, [{"method", list_to_binary("getUserInfo")},
-                              {"userid", list_to_binary(Uid)}
+                              {"params", {obj, [{"userid", list_to_binary(Uid)}]}}
                              ]},
             Form = "body=" ++ rfc4627:encode(ParamObj),
             try
@@ -204,36 +278,36 @@ get_user_info(#jid{server = Domain} = User) ->
                         DBody = rfc4627:decode(Body),
                         case DBody of
                             {ok, Obj, _Re} ->
-                                case rfc4627:get_field(Obj, "errorCode") of
-                                    {ok, <<"0">>} ->
-                                        {ok, ValueObj} = rfc4627:get_field(Obj, "value"),
-                                        Friends = case rfc4627:get_field(ValueObj, "friends") of
+                                case rfc4627:get_field(Obj, "success") of
+                                    {ok, true} ->
+                                        {ok, Entity} = rfc4627:get_field(Obj, "entity"),
+                                        Friends = case rfc4627:get_field(Entity, "friends") of
                                                       {ok, FriendsList} ->
                                                           [{binary_to_list(FriendId), binary_to_list(Alia)} || [FriendId, Alia] <- FriendsList];
                                                       _ ->
                                                           []
                                                   end,
-                                        NickName = case rfc4627:get_field(ValueObj, "nickname") of
+                                        NickName = case rfc4627:get_field(Entity, "nickname") of
                                                        {ok, NickNameBin} ->
                                                            binary_to_list(NickNameBin);
                                                        _ ->
                                                            ""
                                                    end,
-                                        Blacks = case rfc4627:get_field(ValueObj, "blackList") of
+                                        Blacks = case rfc4627:get_field(Entity, "blackList") of
                                                      {ok, BlackList} ->
                                                          [binary_to_list(Bin) || Bin <- BlackList];
                                                      _ ->
                                                          []
                                                  end,
-                                        DeviceToken = case rfc4627:get_field(ValueObj, "deviceToken") of
+                                        DeviceToken = case rfc4627:get_field(Entity, "deviceToken") of
                                                           {ok, null} ->
                                                               null;
                                                           {ok, DeviceTokenBin} ->
-                                                              binary_to_list(DeviceTokenBin);
+                                                              re:replace(binary_to_list(DeviceTokenBin), " ", "", [global, {return, list}]);
                                                           _ ->
                                                               null
                                                       end,
-                                        Imei = case rfc4627:get_field(ValueObj, "imei") of
+                                        Imei = case rfc4627:get_field(Entity, "imei") of
                                                    {ok, null} ->
                                                        null;
                                                    {ok, ImeiBin} ->
@@ -241,7 +315,21 @@ get_user_info(#jid{server = Domain} = User) ->
                                                    _ ->
                                                        null
                                                end,
-                                        UserInfo = #user_info{uid = Uid, friends = Friends, blacks = Blacks, imei = Imei, device_token = DeviceToken},
+                                        MessageConfig = case rfc4627:get_field(Entity, "messageDetailConfig") of
+                                                            {ok, MessageConfigTmp} ->
+                                                                MessageConfigTmp;
+                                                            _ ->
+                                                                1
+                                                        end,
+                                        SilenceConfig = case rfc4627:get_field(Entity, "silenceConfig") of
+                                                            {ok, SilenceConfigTmp} ->
+                                                                SilenceConfigTmp;
+                                                            _ ->
+                                                                0
+                                                        end,
+                                        UserInfo = #user_info{uid = Uid, friends = Friends, nick_name = NickName, blacks = Blacks,
+                                                              imei = Imei, device_token = DeviceToken, silence_config = SilenceConfig,
+                                                              message_config = MessageConfig},
                                         mnesia:dirty_write(user_info_tab, UserInfo),
                                         UserInfo;
                                     _ ->
@@ -285,25 +373,27 @@ get_uid(#jid{user = User}) ->
 %% ====================================================================
 
 init([]) ->
-    create_or_copy_table(user_info_tab, [{record_name, user_info},
-                                         {attributes, record_info(fields, user_info)},
-                                         {ram_copies, [node()]}], ram_copies),
-    create_or_copy_table(group_info_tab, [{record_name, moyou_group_info},
-                                          {attributes, record_info(fields, moyou_group_info)},
-                                          {ram_copies, [node()]}], ram_copies),
     [Domain | _] = ?MYHOSTS,
-    CertFile = ejabberd_config:get_local_option({ios_push_certfile, Domain}),
-    KeyFile = ejabberd_config:get_local_option({ios_push_keyfile, Domain}),
-    Host = ejabberd_config:get_local_option({ios_push_host, Domain}),
-    IOSPushPid = [begin
-                      {ok, Pid} = my_ios_provider:start(CertFile, KeyFile, Host),
-                      Pid
-                  end || _ <- lists:duplicate(?USER_MSD_PID_COUNT, 1)],
-    {ok, #state{ios_push_certfile = CertFile,
-                ios_push_keyfile = KeyFile,
-                ios_push_host = Host,
-                ios_push_handlers = IOSPushPid}}.
-
+    case ejabberd_config:get_local_option({ios_push_config, Domain}) of
+        [CertFile, KeyFile, Host] ->
+            ssl:start(),
+            create_or_copy_table(user_info_tab, [{record_name, user_info},
+                                                 {attributes, record_info(fields, user_info)},
+                                                 {ram_copies, [node()]}], ram_copies),
+            create_or_copy_table(group_info_tab, [{record_name, moyou_group_info},
+                                                  {attributes, record_info(fields, moyou_group_info)},
+                                                  {ram_copies, [node()]}], ram_copies),
+            IOSPushPid = [begin
+                              {ok, Pid} = my_ios_provider:start(CertFile, KeyFile, Host),
+                              Pid
+                          end || _ <- lists:duplicate(?USER_MSD_PID_COUNT, 1)],
+            {ok, #state{ios_push_certfile = CertFile,
+                        ios_push_keyfile = KeyFile,
+                        ios_push_host = Host,
+                        ios_push_handlers = IOSPushPid}};
+        _ ->
+            {ok, #state{}}
+    end.
 
 handle_call({list}, _From, State) ->
     {reply, {ok, State}, State};
@@ -341,3 +431,39 @@ terminate(_Reason, _State) ->
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
+
+
+
+
+test_normal_msg() ->
+    From = {jid, "10111967", "gamepro.com", [], "10111967", "gamepro.com", []},
+    To = {jid, "10018347", "gamepro.com", [], "10018347", "gamepro.com", []},
+    Packet = {xmlelement,"message",
+              [{"msgTime","1420812821877"},
+               {"id","6GDf3-81"},
+               {"to","10018347@gamepro.com"},
+               {"from","10111967@gamepro.com/352248062680367"},
+               {"type","chat"},
+               {"msgtype","normalchat"}],
+              [{xmlelement,"body",[],[{xmlcdata,<<"9">>}]}]},
+    send_offline_msg(From, To, Packet).
+
+
+test_group_msg() ->
+    From = {jid, "10111967", "gamepro.com", [], "10111967", "gamepro.com", []},
+    To = {jid, "10018347", "gamepro.com", [], "10018347", "gamepro.com", []},
+    Packet = {xmlelement,"message",
+              [{"server_id","mygroup_104620_813"},
+               {"msgTime","1420811840278"},
+               {"type","chat"},
+               {"to","10018347@gamepro.com"},
+               {"from","10111967@gamepro.com"},
+               {"msgtype","groupchat"},
+               {"fileType","text"},
+               {"id","mygroup_104620_813"},
+               {"groupid","104620"},
+               {"g","0"}],
+              [{xmlelement,"body",[],
+                [{xmlcdata,
+                  <<"{\"content\":\"M\",\"userNickName\":\"0517\"}">>}]}]},
+    send_offline_msg(From, To, Packet).

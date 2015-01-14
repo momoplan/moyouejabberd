@@ -26,7 +26,8 @@ init([]) ->
     MYMsgCenter ={my_msg_center, {my_msg_center, start_link, []}, permanent, 3000, worker, [my_msg_center]},
     MYGroupMsgCenter ={my_group_msg_center, {my_group_msg_center, start_link, []}, permanent, 3000, worker, [my_group_msg_center]},
     InfServer ={aa_inf_server, {aa_inf_server, start, []}, permanent, 3000, worker, [aa_inf_server]},
-    {ok, {{one_for_one, 5, 10}, [AAHookhandler,AAGroupChatSup, AAUserMsgPisSup, AAMsgStastic, AAMsgCleaner,MYMsgCenter, MYGroupMsgCenter, InfServer]}}.
+    MYOfflineMsgCenter ={my_offline_msg_center, {my_offline_msg_center, start_link, []}, permanent, 3000, worker, [my_offline_msg_center]},
+    {ok, {{one_for_one, 5, 10}, [AAHookhandler,AAGroupChatSup, AAUserMsgPisSup, AAMsgStastic, AAMsgCleaner,MYMsgCenter, MYGroupMsgCenter, InfServer, MYOfflineMsgCenter]}}.
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================

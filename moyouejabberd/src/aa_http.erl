@@ -127,6 +127,77 @@ handle_http(Req) ->
                             _ ->
                                 http_response({#success{success=false,entity=list_to_binary("method undifine")},Req})
                         end;
+                    "update_group_info" ->
+                        case rfc4627:get_field(Obj, "gid") of
+                            {ok, Gid} ->
+                                {ok, GName} = rfc4627:get_field(Obj, "gname"),
+                                NotPush = case rfc4627:get_field(Obj, "notPushUserids") of
+                                              {ok, NotPushList} ->
+                                                  [binary_to_list(Bin) || Bin <- NotPushList];
+                                              _ ->
+                                                  []
+                                          end,
+                                case aa_hookhandler:get_offline_data_node() of
+                                    none ->
+                                        http_response({#success{success = false, entity = list_to_binary("unknow data node")}, Req});
+                                    Node ->
+                                        rpc:cast(Node, my_offline_msg_center, update_group_info, [binary_to_list(Gid), binary_to_list(GName), NotPush]),
+                                        http_response({#success{success = true, entity = <<"ok">>}, Req})
+                                end;
+                            _ ->
+                                http_response({#success{success = true, entity = <<"unknow gid">>},Req})
+                        end;
+                    "update_user_info" ->
+                        case rfc4627:get_field(Obj, "uid") of
+                            {ok, Uid} ->
+                                {ok, NickName} = rfc4627:get_field(Obj, "nickname"),
+                                {ok, DeviceToken} = rfc4627:get_field(Obj, "deviceToken"),
+                                {ok, SilenceConfig} = rfc4627:get_field(Obj, "silenceConfig"),
+                                {ok, Imei} = rfc4627:get_field(Obj, "imei"),
+                                {ok, MessageConfig} = rfc4627:get_field(Obj, "messageDetailConfig"),
+                                Blacks = case rfc4627:get_field(Obj, "blackList") of
+                                             {ok, BlackList} ->
+                                                 [binary_to_list(Bin) || Bin <- BlackList];
+                                             _ ->
+                                                 []
+                                         end,
+                                Friends = case rfc4627:get_field(Obj, "friends") of
+                                              {ok, FriendsList} ->
+                                                  [{binary_to_list(FriendId), binary_to_list(Alia)} || [FriendId, Alia] <- FriendsList];
+                                              _ ->
+                                                  []
+                                          end,
+                                case aa_hookhandler:get_offline_data_node() of
+                                    none ->
+                                        http_response({#success{success = false, entity = list_to_binary("unknow data node")}, Req});
+                                    Node ->
+                                        rpc:cast(Node, my_offline_msg_center, update_user_info, [binary_to_list(Uid), Friends, binary_to_list(NickName),
+                                                                                                  re:replace(binary_to_list(DeviceToken), " ", "", [global, {return, list}]),
+                                                                                                  binary_to_list(Imei), Blacks, SilenceConfig, MessageConfig]),
+                                        http_response({#success{success = true, entity = <<"ok">>}, Req})
+                                end;
+                            _ ->
+                                http_response({#success{success = true, entity = <<"unknow uid">>},Req})
+                        end;
+                    "query_group_id" ->
+                        case rfc4627:get_field(Obj, "gid") of
+                            {ok, Gid} ->
+                                case aa_hookhandler:get_group_data_node() of
+                                    none ->
+                                        http_response({#success{success = false, entity = list_to_binary("unknow data node")}, Req});
+                                    Node ->
+                                        case rpc:call(Node, my_group_msg_center, query_group_id, [binary_to_list(Gid)]) of
+                                            {badrpc, Reason1} ->
+                                                ?ERROR_MSG("query_group_id failed, gid : ~p, Reason : ~p~n",[Node, Gid, Reason1]),
+                                                http_response({#success{success = false, entity = list_to_binary("badrpc error")}, Req});
+                                            {ok, Seq} ->
+                                                Entity = {obj, [{seq, Seq}]},
+                                                http_response({#success{success = true, entity = Entity}, Req})
+                                        end
+                                end;
+                            _ ->
+                                http_response({#success{success = true, entity = <<"unknow gid">>},Req})
+                        end;
                     "query_group_msg" ->
                         case rfc4627:get_field(Obj, "msg_id") of
                             {ok, Mid} ->
