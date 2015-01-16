@@ -151,9 +151,19 @@ handle_http(Req) ->
                         case rfc4627:get_field(Obj, "uid") of
                             {ok, Uid} ->
                                 {ok, NickName} = rfc4627:get_field(Obj, "nickname"),
-                                {ok, DeviceToken} = rfc4627:get_field(Obj, "deviceToken"),
+                                DeviceToken = case rfc4627:get_field(Obj, "deviceToken") of
+                                                  {ok, null} ->
+                                                      null;
+                                                  {ok, DeviceTokenBin} ->
+                                                      re:replace(binary_to_list(DeviceTokenBin), " ", "", [global, {return, list}])
+                                              end,
+                                Imei = case rfc4627:get_field(Obj, "imei") of
+                                           {ok, null} ->
+                                               null;
+                                           {ok, ImeiBin  } ->
+                                               binary_to_list(ImeiBin)
+                                       end,
                                 {ok, SilenceConfig} = rfc4627:get_field(Obj, "silenceConfig"),
-                                {ok, Imei} = rfc4627:get_field(Obj, "imei"),
                                 {ok, MessageConfig} = rfc4627:get_field(Obj, "messageDetailConfig"),
                                 Blacks = case rfc4627:get_field(Obj, "blackList") of
                                              {ok, BlackList} ->
@@ -167,13 +177,21 @@ handle_http(Req) ->
                                               _ ->
                                                   []
                                           end,
+                                Env = case rfc4627:get_field(Obj, "appType") of
+                                          {ok, null} ->
+                                              null;
+                                          {ok, AppType} ->
+                                              binary_to_list(AppType);
+                                          _ ->
+                                              null
+                                      end,
                                 case aa_hookhandler:get_offline_data_node() of
                                     none ->
                                         http_response({#success{success = false, entity = list_to_binary("unknow data node")}, Req});
                                     Node ->
                                         rpc:cast(Node, my_offline_msg_center, update_user_info, [binary_to_list(Uid), Friends, binary_to_list(NickName),
-                                                                                                  re:replace(binary_to_list(DeviceToken), " ", "", [global, {return, list}]),
-                                                                                                  binary_to_list(Imei), Blacks, SilenceConfig, MessageConfig]),
+                                                                                                 DeviceToken, Imei, Blacks, SilenceConfig, MessageConfig,
+                                                                                                 Env]),
                                         http_response({#success{success = true, entity = <<"ok">>}, Req})
                                 end;
                             _ ->
