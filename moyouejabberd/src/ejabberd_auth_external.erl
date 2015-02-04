@@ -171,38 +171,31 @@ check_password_extauth(User, Server, Password) ->
             check_password_extauth(do, User, Server, Password)
     end.
 check_password_extauth(do, User, Server, Password) ->
-    %% 	true.
-    HTTPServer =  ejabberd_config:get_local_option({http_server,Server}),
-    HTTPService = ejabberd_config:get_local_option({http_server_service_client,Server}),
-    HTTPTarget = string:concat(HTTPServer,HTTPService),
-    HTTPHead = "application/x-www-form-urlencoded",
-    %% 2013-10-22 : 新的请求协议如下,其中输出的 entity 属性中带有 token等信息，此处不必关心，success=true 即成功
-    %% INPUT {"service":"service.uri.pet_sso","method":"token","channel":"9","token":PWD}
-    %% OUTPUT {"success":true,"entity":{}}
-    {PWD} = {list_to_binary(Password)},
-    %% 2014-01-22 : 回调时增加域名和用户名
-    UID = list_to_binary(User),
-    DOMAIN = list_to_binary(Server),
-    {Service,Method,Channel} = {list_to_binary("service.uri.pet_sso"),list_to_binary("token"),list_to_binary("9")},
-    PostBody = {obj,[{"service",Service},{"method",Method},{"channel",Channel},{"token",PWD},{"params",{obj,[{"username",UID},{"domain",DOMAIN}]}} ]},
-    Form = "body="++rfc4627:encode(PostBody),
-    case httpc:request(post,{HTTPTarget,[],HTTPHead, Form},[],[]) of
-        {ok, {_,_,Body}}->
+    Url = moyou_util:get_config(gamepro_server),
+    PostBody = {obj, [{"service", <<"service.uri.pet_sso">>},
+                      {"method", <<"token">>},
+                      {"channel", <<"9">>},
+                      {"token", list_to_binary(Password)},
+                      {"params",{obj,
+                                 [{"username", list_to_binary(User)},
+                                  {"domain", list_to_binary(Server)}]
+                                }}]},
+    Params = "body=" ++ rfc4627:encode(PostBody),
+    case moyou_util:http_request(Url, Params) of
+        [] ->
+            false;
+        Body ->
             case rfc4627:decode(Body) of
-                {ok,Obj,_Re} ->
-                    case rfc4627:get_field(Obj,"success") of
-                        {ok,true} ->
-                            true;
-                        {ok,false} ->
-                            false;
+                {ok, Obj, _Re} ->
+                    case rfc4627:get_field(Obj, "success") of
+                        {ok, Result} ->
+                            Result;
                         _ ->
                             false
                     end;
                 {error, _Reason}->
                     false
-            end ;
-        {error, _Reason}->
-            false
+            end
     end.
 
 %% @spec (User, Server, Password) -> true | false

@@ -1,4 +1,4 @@
--module(my_ios_provider).
+-module(moyou_ios_provider).
 
 -behaviour(gen_server).
 
@@ -30,10 +30,6 @@
                 keyfile,
                 socket}).
 
-%% hosts and ports of ios push service.
--define(IOS_PUSH_PRODUCTION, "gateway.push.apple.com").
-
--define(IOS_PUSH_DEVELOPMENT, "gateway.sandbox.push.apple.com").
 
 -define(IOS_PUSH_PORT, 2195).
 

@@ -650,6 +650,8 @@ make_lager
 lager
 make_goldrush
 goldrush
+make_moyou
+moyou
 LIBOBJS
 EXPAT_LIBS
 EXPAT_CFLAGS
@@ -716,6 +718,7 @@ with_libiconv_prefix
 with_expat
 enable_lager
 enable_goldrush
+enable_moyou
 enable_mod_proxy65
 enable_mod_pubsub
 enable_eldap
@@ -1364,6 +1367,7 @@ Optional Features:
   --enable-FEATURE[=ARG]  include FEATURE [ARG=yes]
   --enable-lager        enable lager (default: yes)
   --enable-goldrush        enable goldrush (default: yes)
+  --enable-moyou        enable moyou (default: yes)
   --enable-mod_proxy65    enable mod_proxy65 (default: yes)
   --enable-mod_pubsub     enable mod_pubsub (default: yes)
   --enable-eldap          enable eldap (default: yes)
@@ -4253,6 +4257,23 @@ fi
 { $as_echo "$as_me:${as_lineno-$LINENO}: result: $mr_enable_goldrush" >&5
 $as_echo "$mr_enable_goldrush" >&6; }
 
+moyou=
+make_moyou=
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether build moyou" >&5
+$as_echo_n "checking whether build moyou... " >&6; }
+# Check whether --enable-goldrush was given.
+if test "${enable_moyou+set}" = set; then :
+  enableval=$enable_moyou; mr_enable_moyou="$enableval"
+else
+  mr_enable_moyou=yes
+fi
+
+if test "$mr_enable_moyou" = "yes"; then
+moyou=moyou
+make_moyou=moyou/Makefile
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $mr_enable_moyou" >&5
+$as_echo "$mr_enable_moyou" >&6; }
 
 
 mod_proxy65=
@@ -4690,7 +4711,7 @@ fi
 
 
 
-ac_config_files="$ac_config_files Makefile $make_goldrush $make_lager $make_mod_pubsub $make_mod_proxy65 $make_eldap $make_pam $make_web stringprep/Makefile stun/Makefile $make_tls $make_odbc $make_ejabberd_zlib"
+ac_config_files="$ac_config_files Makefile $make_moyou $make_goldrush $make_lager $make_mod_pubsub $make_mod_proxy65 $make_eldap $make_pam $make_web stringprep/Makefile stun/Makefile $make_tls $make_odbc $make_ejabberd_zlib"
 
 #openssl
 
@@ -5850,6 +5871,7 @@ do
     "Makefile") CONFIG_FILES="$CONFIG_FILES Makefile" ;;
     "$make_lager") CONFIG_FILES="$CONFIG_FILES $make_lager" ;;
     "$make_goldrush") CONFIG_FILES="$CONFIG_FILES $make_goldrush" ;;
+    "$make_moyou") CONFIG_FILES="$CONFIG_FILES $make_moyou" ;;
     "$make_mod_pubsub") CONFIG_FILES="$CONFIG_FILES $make_mod_pubsub" ;;
     "$make_mod_proxy65") CONFIG_FILES="$CONFIG_FILES $make_mod_proxy65" ;;
     "$make_eldap") CONFIG_FILES="$CONFIG_FILES $make_eldap" ;;

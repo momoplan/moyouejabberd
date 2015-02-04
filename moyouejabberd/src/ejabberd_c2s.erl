@@ -473,8 +473,6 @@ wait_for_feature_request({xmlstreamelement, El}, StateData) ->
 				  [{"xmlns", ?NS_SASL}], []}),
 		    U = xml:get_attr_s(username, Props),
 		    AuthModule = xml:get_attr_s(auth_module, Props),
-		    ?INFO_MSG("(~w) Accepted authentication for ~s by ~p",
-			      [StateData#state.socket, U, AuthModule]),
 		    fsm_next_state(wait_for_stream,
 				   StateData#state{
                                        streamid = new_id(),
@@ -926,49 +924,49 @@ session_established2(El, StateData) ->
             _ ->
                 %% 				?INFO_MSG("ToJID ~p", [Name]),
                 case Name of
-                    "presence" ->
-                        PresenceEl = ejabberd_hooks:run_fold(
-                            c2s_update_presence,
-                            Server,
-                            NewEl,
-                            [User, Server]),
-                        ejabberd_hooks:run(
-                            user_send_packet,
-                            Server,
-                            [FromJID, ToJID, PresenceEl]),
-                        case ToJID of
-                            #jid{user = User,
-                                 server = Server,
-                                 resource = ""} ->
-                                ?DEBUG("presence_update(~p,~n\t~p,~n\t~p)",
-                                       [FromJID, PresenceEl, StateData]),
-                                presence_update(FromJID, PresenceEl,
-                                                StateData);
-                            _ ->
-                                presence_track(FromJID, ToJID, PresenceEl,
-                                               StateData)
-                        end;
-                    "iq" ->
-                        case jlib:iq_query_info(NewEl) of
-                            #iq{xmlns = Xmlns} = IQ
-                                when Xmlns == ?NS_PRIVACY;
-                            Xmlns == ?NS_BLOCKING ->
-                                process_privacy_iq(
-                                    FromJID, ToJID, IQ, StateData);
-                            _ ->
-                                ejabberd_hooks:run(
-                                    user_send_packet,
-                                    Server,
-                                    [FromJID, ToJID, NewEl]),
-                                check_privacy_route(FromJID, StateData, FromJID, ToJID, NewEl),
-                                StateData
-                        end;
+                    %                    "presence" ->
+                    %                        PresenceEl = ejabberd_hooks:run_fold(
+                    %                            c2s_update_presence,
+                    %                            Server,
+                    %                            NewEl,
+                    %                            [User, Server]),
+                    %                        ejabberd_hooks:run(
+                    %                            user_send_packet,
+                    %                            Server,
+                    %                            [FromJID, ToJID, PresenceEl]),
+                    %                        case ToJID of
+                    %                            #jid{user = User,
+                    %                                 server = Server,
+                    %                                 resource = ""} ->
+                    %                                ?DEBUG("presence_update(~p,~n\t~p,~n\t~p)",
+                    %                                       [FromJID, PresenceEl, StateData]),
+                    %                                presence_update(FromJID, PresenceEl,
+                    %                                                StateData);
+                    %                            _ ->
+                    %                                presence_track(FromJID, ToJID, PresenceEl,
+                    %                                               StateData)
+                    %                        end;
+                    %                    "iq" ->
+                    %                        case jlib:iq_query_info(NewEl) of
+                    %                            #iq{xmlns = Xmlns} = IQ
+                    %                                when Xmlns == ?NS_PRIVACY;
+                    %                            Xmlns == ?NS_BLOCKING ->
+                    %                                process_privacy_iq(
+                    %                                    FromJID, ToJID, IQ, StateData);
+                    %                            _ ->
+                    %                                ejabberd_hooks:run(
+                    %                                    user_send_packet,
+                    %                                    Server,
+                    %                                    [FromJID, ToJID, NewEl]),
+                    %                                check_privacy_route(FromJID, StateData, FromJID, ToJID, NewEl),
+                    %                                StateData
+                    %                        end;
                     "message" ->
                         ejabberd_hooks:run(user_send_packet,
                                            Server,
                                            [FromJID, ToJID, NewEl]),
-                        check_privacy_route(FromJID, StateData, FromJID,
-                                            ToJID, NewEl),
+                        %                        check_privacy_route(FromJID, StateData, FromJID,
+                        %                                            ToJID, NewEl),
                         StateData;
                     _ ->
                         StateData
@@ -2180,23 +2178,44 @@ pack_string(String, Pack) ->
             {String, gb_trees:insert(String, String, Pack)}
     end.
 
-send_offline_msg(JID, StateData) ->
-    {ok, Messages}= aa_hookhandler:get_offline_msg(JID),
-    send_offline_msg(JID, StateData, Messages).
+send_offline_msg(JID, StateData) when JID#jid.server =/= "push.gamepro.com" ->
+    {Messages, OldMessages} = moyou_rpc_util:get_offline_msg(JID#jid.user),
+    send_offline_msg(JID, StateData, Messages),
+    send_old_offline_message(JID, StateData, OldMessages);
+send_offline_msg(_JID, _StateData) ->
+    skip.
 
 send_offline_msg(_JID, _StateData, []) ->
-    go;
+    skip;
 send_offline_msg(JID, StateData, [Message | T]) ->
-    {xmlelement, Name, Attrs, Els} = element(5,Message),
-    From = element(3,Message),
-    To = element(4,Message),
+    {xmlelement, Name, Attrs, Els} = element(6, Message),
+    From = element(4, Message),
+    Attrs1 = jlib:replace_from_to_attrs(jlib:jid_to_string(From),
+                                        jlib:jid_to_string(JID),
+                                        Attrs),
+    FixedPacket = {xmlelement, Name, Attrs1, Els},
+    case catch send_element(StateData,  FixedPacket) of
+        {'EXIT', Reason} ->
+            ?INFO_MSG("Jid : ~p send offline message with exit reason : ~p~n", [JID, Reason]);
+        _ ->
+            send_offline_msg(JID, StateData, T)
+    end.
+
+
+
+send_old_offline_message(_JID, _StateData, []) ->
+    skip;
+send_old_offline_message(JID, StateData, [Message | T]) ->
+    {xmlelement, Name, Attrs, Els} = element(5, Message),
+    From = element(3, Message),
+    To = element(4, Message),
     Attrs1 = jlib:replace_from_to_attrs(jlib:jid_to_string(From),
                                         jlib:jid_to_string(To),
                                         Attrs),
     FixedPacket = {xmlelement, Name, Attrs1, Els},
     case catch send_element(StateData,  FixedPacket) of
         {'EXIT', Reason} ->
-            ?INFO_MSG("Jid : ~p send offline msg with exit reason : ~p~n", [JID, Reason]);
+            ?INFO_MSG("Jid : ~p send old offline message with exit reason : ~p~n", [JID, Reason]);
         _ ->
-            send_offline_msg(JID, StateData, T)
+            send_old_offline_message(JID, StateData, T)
     end.

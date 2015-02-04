@@ -5,6 +5,7 @@
 %%
 
 -module(aa_inf_thrift).
+
 -behaviour(thrift_service).
 
 

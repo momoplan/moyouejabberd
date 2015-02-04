@@ -42,6 +42,7 @@
 	 close_session_unset_presence/5,
 	 dirty_get_sessions_list/0,
 	 dirty_get_my_sessions_list/0,
+         dirty_get_node_sessions_list/1,
 	 get_vh_session_list/1,
 	 get_vh_session_number/1,
 	 register_iq_handler/4,
@@ -240,6 +241,13 @@ dirty_get_my_sessions_list() ->
         session,
         [{#session{sid = {'_', '$1'}, _ = '_'},
           [{'==', {node, '$1'}, node()}],
+          ['$_']}]).
+
+dirty_get_node_sessions_list(Node) ->
+    mnesia:dirty_select(
+        session,
+        [{#session{sid = {'_', '$1'}, _ = '_'},
+          [{'==', {node, '$1'}, Node}],
           ['$_']}]).
 
 get_vh_session_list(Server) ->

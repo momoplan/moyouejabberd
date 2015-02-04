@@ -7,8 +7,10 @@
 %%%--------------------------------------
 -module(db_sql).
 -compile(export_all).
--include("aa_data.hrl").
+
 -include("emysql.hrl").
+
+-define(DB, my_db_conn).
 
 %% 执行一个SQL查询,返回影响的行数
 execute(Sql) ->

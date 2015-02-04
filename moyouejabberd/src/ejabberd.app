@@ -98,6 +98,7 @@
 	     mod_vcard,
 	     mod_vcard_ldap,
 	     mod_version,
+             mod_customize
 	     node_buddy,
 	     node_club,
 	     node_default,

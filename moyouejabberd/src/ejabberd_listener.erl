@@ -177,11 +177,9 @@ init_tcp(PortIP, Module, Opts, SockOpts, Port, IPS) ->
 listen_tcp(PortIP, Module, SockOpts, Port, IPS) ->
     case ets:lookup(listen_sockets, PortIP) of
         [{PortIP, ListenSocket}] ->
-            ?INFO_MSG("222222 Reusing listening port for ~p", [Port]),
             ets:delete(listen_sockets, Port),
             ListenSocket;
         _ ->
-            ?INFO_MSG("111111 Doing listening port ip for ~p", [PortIP]),
             SockOpts2 = try erlang:system_info(otp_release) >= "R13B" of
                             true -> [{send_timeout_close, true} | SockOpts];
                             false -> SockOpts
