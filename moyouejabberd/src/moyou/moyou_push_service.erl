@@ -291,7 +291,7 @@ get_group_info(Gid) ->
             Params = "body=" ++ rfc4627:encode(ParamObj),
             case moyou_util:http_request(Url, Params) of
                 [] ->
-                    [];
+                    #moyou_push_group_info{gid = Gid};
                 Body ->
                     case rfc4627:decode(Body) of
                         {ok, Obj, _Re} ->

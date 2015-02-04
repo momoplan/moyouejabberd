@@ -77,7 +77,12 @@ migrate_user_group_session_info(Uid, SessionID, Seq) ->
                         List ->
                             mnesia:dirty_write(user_group_info, {element(1, R), element(2, R), List})
                     end,
-                    {element(2, Value), element(3, Value)}
+                    if
+                        size(Value) > 2 ->
+                            {element(2, Value), element(3, Value)};
+                        true ->
+                            {element(2, Value), element(2, Value)}
+                    end
             end
     end.
 
