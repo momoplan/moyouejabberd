@@ -28,8 +28,8 @@
                                message_config = 1,
                                env}).
 
--record(moyou_push_group_info, {gid,
-                                name,
+-record(moyou_push_group_info, {gid = "",
+                                name = "",
                                 not_push = []}).
 
 %% ====================================================================
