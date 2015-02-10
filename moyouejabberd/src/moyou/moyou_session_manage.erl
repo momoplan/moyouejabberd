@@ -46,7 +46,7 @@ safe_call(SessionID, Msg, 0) ->
 safe_call(SessionID, Msg, Retry) ->
     try
         Pid = get_session_pid(SessionID),
-        gen_server:call(Pid, Msg)
+        gen_server:call(Pid, Msg, infinity)
     catch
         _Type:_Error ->
             safe_call(SessionID, Msg, Retry - 1)

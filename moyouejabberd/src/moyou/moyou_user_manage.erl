@@ -58,7 +58,7 @@ safe_call(Uid, Msg, 0) ->
 safe_call(Uid, Msg, Retry) ->
     try
         Pid = get_user_pid(Uid),
-        gen_server:call(Pid, Msg)
+        gen_server:call(Pid, Msg, infinity)
     catch
         _TYPE:_ERROR ->
             safe_call(Uid, Msg, Retry - 1)
