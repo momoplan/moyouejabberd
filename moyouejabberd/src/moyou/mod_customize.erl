@@ -78,21 +78,26 @@ user_send_packet(From, To, {xmlelement, "message", Attrs, Els} = Packet) ->
                 false ->
                     skip;
                 {true, UserList} ->
-                    case moyou_rpc_util:store_message(SessionID, From, Packet1) of
-                        {repeat, Sid} ->
-                            spawn(fun() -> ack(From, Mt, Cid, Time, Sid) end);
-                        {Sid, Seq} ->
-                            spawn(fun() -> ack(From, Mt, Cid, Time, Sid) end),
-                            moyou_rpc_util:update_session_all_seq(UserList, SessionID, Seq),
-                            Attrs3 = [{"id", Sid} | [{K, V} || {K, V} <- Attrs2, K =/= "id"]],
-                            Packet2 = {xmlelement, "message", Attrs3, Els},
-                            spawn(fun() -> route_message(Sid, From, UserList, Packet2) end)
+                    case is_temp_message(Mt) of
+                        true ->   %%临时消息走这里
+                            spawn(fun() -> route_message(moyou_util:get_id(), From, UserList, Packet1) end);
+                        _ ->
+                            case moyou_rpc_util:store_message(SessionID, From, Packet1) of
+                                {repeat, Sid} ->
+                                    spawn(fun() -> ack(From, Mt, Cid, Time, Sid) end);
+                                {Sid, Seq} ->
+                                    spawn(fun() -> ack(From, Mt, Cid, Time, Sid) end),
+                                    moyou_rpc_util:update_session_all_seq(UserList, SessionID, Seq),
+                                    Attrs3 = [{"id", Sid} | [{K, V} || {K, V} <- Attrs2, K =/= "id"]],
+                                    Packet2 = {xmlelement, "message", Attrs3, Els},
+                                    spawn(fun() -> route_message(Sid, From, UserList, Packet2) end)
+                            end
                     end
             end;
         Mt =:= "msgStatus" andalso To#jid.user =/= ?ACK_USER andalso From#jid.server =/= "push.gampro.com" ->
+            cancel_loop(Cid, From),
             case re:split(Cid, "_", [{return, list}]) of
                 [Prefix, SessionKey, Seq] ->
-                    cancel_loop(Cid, From),
                     SessionID = lists:concat([Prefix, "_", SessionKey]),
                     moyou_rpc_util:update_session_read_seq(From#jid.user, SessionID, list_to_integer(Seq));
                 _ ->
@@ -228,3 +233,9 @@ query_remote_group_member(Gid)->
                     []
             end
     end.
+
+
+is_temp_message("eventMsg") ->
+    true;
+is_temp_message(_Mt) ->
+    false.

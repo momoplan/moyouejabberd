@@ -92,19 +92,24 @@ android_send_offline_msg(From, ToUserInfo, {xmlelement, "message", Attr, _Body} 
     Imei = ToUserInfo#moyou_push_user_info.imei,
     PushTo = #jid{user = Imei, server = "push.gamepro.com", resource = [], luser = Imei, lserver = "push.gamepro.com", lresource = []},
     Mt = proplists:get_value("msgtype", Attr, ""),
-    PushAttr = [{"id", moyou_util:get_id()},
-                {"type", "chat"},
-                {"msgTime", proplists:get_value("msgTime", Attr, "")},
-                {"msgtype", moyou_util:msg_type_2_push_type(Mt)}],
-    BodyJson = get_push_body(Mt, From, ToUserInfo, Packet),
-    case BodyJson of
-        skip ->
-            skip;
+    case Mt of
+        "eventMsg" ->
+            ejabberd_router:route(From, PushTo, Packet);
         _ ->
-            CDATA = rfc4627:encode(BodyJson),
-            PushBody = {xmlelement, "body", [], [{xmlcdata, list_to_binary(CDATA)}]},
-            PushPacket = {xmlelement, "message", PushAttr, [PushBody]},
-            ejabberd_router:route(From, PushTo, PushPacket)
+            PushAttr = [{"id", moyou_util:get_id()},
+                        {"type", "chat"},
+                        {"msgTime", proplists:get_value("msgTime", Attr, "")},
+                        {"msgtype", moyou_util:msg_type_2_push_type(Mt)}],
+            BodyJson = get_push_body(Mt, From, ToUserInfo, Packet),
+            case BodyJson of
+                skip ->
+                    skip;
+                _ ->
+                    CDATA = rfc4627:encode(BodyJson),
+                    PushBody = {xmlelement, "body", [], [{xmlcdata, list_to_binary(CDATA)}]},
+                    PushPacket = {xmlelement, "message", PushAttr, [PushBody]},
+                    ejabberd_router:route(From, PushTo, PushPacket)
+            end
     end;
 android_send_offline_msg(_From, _ToUserInfo, _Packet) ->
     skip.
@@ -113,13 +118,21 @@ ios_send_offline_msg(From, ToUserInfo, {xmlelement, "message", Attr, _Body} = Pa
     ToUserInfo#moyou_push_user_info.device_token /= null ->
     Token = ToUserInfo#moyou_push_user_info.device_token,
     Mt = proplists:get_value("msgtype", Attr, ""),
-    Alert = get_push_alert(Mt, From, ToUserInfo, Packet),
-    case Alert of
-        skip ->
-            skip;
-        _ ->
+    case Mt of
+        "eventMsg" ->
+            Alert = hd(moyou_util:get_msg_content(Packet)),
             Sound = get_push_sound(ToUserInfo, Mt),
-            push_to_ios(Token, Sound, Alert, ToUserInfo#moyou_push_user_info.env)
+            Extra = parse_event_msg(Packet),
+            push_to_ios(Token, Sound, Alert, Extra, ToUserInfo#moyou_push_user_info.env);
+        _ ->
+            Alert = get_push_alert(Mt, From, ToUserInfo, Packet),
+            case Alert of
+                skip ->
+                    skip;
+                _ ->
+                    Sound = get_push_sound(ToUserInfo, Mt),
+                    push_to_ios(Token, Sound, Alert, ToUserInfo#moyou_push_user_info.env)
+            end
     end;
 ios_send_offline_msg(_From, _ToUserInfo, _Packet) ->
     skip.
@@ -169,7 +182,7 @@ get_push_body(Mt, #jid{user = FromUid}, ToUserInfo, {xmlelement, "message", Attr
 when Mt =:= "normalchat" orelse Mt =:= "sayHello" ->
     ID = proplists:get_value("id", Attr, ""),
     FromUserInfo = get_user_info(FromUid),
-    Content = moyou_util:get_msg_content(Packet),
+    Content = hd(moyou_util:get_msg_content(Packet)),
     case FromUserInfo of
         [] ->
             skip;
@@ -194,7 +207,7 @@ get_push_body(Mt, #jid{user = FromUid}, _ToUserInfo, {xmlelement, "message", Att
     orelse Mt =:= "requestJoinTeam"
     orelse Mt =:= "teamHelper" ->
     ID = proplists:get_value("id", Attr, ""),
-    Content = moyou_util:get_msg_content(Packet),
+    Content = hd(moyou_util:get_msg_content(Packet)),
     Name = moyou_util:msg_type_2_push_name(Mt),
     {obj, [{"id", list_to_binary(ID)},
            {"expire", <<"604800">>},
@@ -231,7 +244,7 @@ get_push_alert(Mt, #jid{user = FromUid}, ToUserInfo, {xmlelement, "message", Att
     end;
 get_push_alert(Mt, #jid{user = FromUid}, ToUserInfo, Packet) when Mt =:= "normalchat" ->
     FromUserInfo = get_user_info(FromUid),
-    Content = moyou_util:get_msg_content(Packet),
+    Content = hd(moyou_util:get_msg_content(Packet)),
     case FromUserInfo of
         [] ->
             skip;
@@ -256,7 +269,7 @@ get_push_alert(Mt, _From, _ToUserInfo, Packet) when Mt =:= "system"
     orelse Mt =:= "teamInvite"
     orelse Mt =:= "requestJoinTeam"
     orelse Mt =:= "teamHelper" ->
-    Content = moyou_util:get_msg_content(Packet),
+    Content = hd(moyou_util:get_msg_content(Packet)),
     Name = moyou_util:msg_type_2_push_name(Mt),
     lists:concat([Name, ":", Content]);
 get_push_alert(_Mt, _From, _ToUserInfo, _Packet) ->
@@ -267,6 +280,10 @@ push_to_ios(Token, Sound, Alert, Env) ->
     {ok, Pid} = gen_server:call(?MODULE, {random_ios_push_pid, Env}),
     moyou_ios_provider:push(Pid, Token, Sound, Alert).
     
+push_to_ios(Token, Sound, Alert, Extra, Env) ->
+    {ok, Pid} = gen_server:call(?MODULE, {random_ios_push_pid, Env}),
+    moyou_ios_provider:push(Pid, Token, Sound, Alert, Extra).
+
 
 check_black(#moyou_push_user_info{uid = Uid}, #moyou_push_user_info{blacks = Blacks}) ->
     lists:member(Uid, Blacks).
@@ -460,6 +477,32 @@ code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 
+
+parse_event_msg({xmlelement, "message", _, Els}) ->
+    case feach_extra(Els, []) of
+        [] ->
+            [];
+        Extra ->
+            [{"params", list_to_binary(hd(Extra))}]
+    end;
+parse_event_msg(_Packet) ->
+    [].
+
+
+feach_extra([Element | Message], List) ->
+    case Element of
+        {xmlelement, "payload", _, _} ->
+            feach_extra(Message, [get_text_extra_form_packet_result(Element) | List]);
+        _ ->
+            feach_extra(Message,List)
+    end;
+feach_extra([], List) ->
+    List.
+
+
+get_text_extra_form_packet_result({xmlelement, "payload", _, List})->
+    Res = lists:map(fun({_, V})-> binary_to_list(V) end, List),
+    binary_to_list(list_to_binary(Res)).
 
 
 test_normal_msg(Uid) ->

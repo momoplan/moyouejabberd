@@ -10,7 +10,8 @@
          terminate/2]).
 
 -export([start/3,
-         push/4]).
+         push/4,
+         push/5]).
 
 
 -export([start/0,
@@ -44,8 +45,13 @@ start(CertFile, KeyFile, Host) ->
 push(Pid, Tokens, Sound, Alert) ->
     gen_server:cast(Pid, {push, Tokens, #payload{alert = Alert,
                                                  badge = 1,
-                                                 sound = Sound}}).
+                                                 sound = Sound}, []}).
 
+
+push(Pid, Tokens, Sound, Alert, Extra) ->
+    gen_server:cast(Pid, {push, Tokens, #payload{alert = Alert,
+                                                 badge = 1,
+                                                 sound = Sound}, Extra}).
 
 %% ----------------------------------------------------
 %% gen_server callbacks.
@@ -80,17 +86,17 @@ create_socket(CertFile, KeyFile, Host)  ->
 handle_call(_Request, _From, State) ->
     {reply, ok, State}.
 
-handle_cast({push, Token, Payload}, #state{socket = undefined,
-                                           host = Host,
-                                           certfile = CertFile,
-                                           keyfile = KeyFile} = State) ->
-                                       
+handle_cast({push, Token, Payload, Extra}, #state{socket = undefined,
+                                                  host = Host,
+                                                  certfile = CertFile,
+                                                  keyfile = KeyFile} = State) ->
+
     case create_socket(CertFile, KeyFile, Host) of
         {error, Reason} ->
             ?ERROR_MSG("lost push message : ~p, create socket error reason : ~p~n", [Payload, Reason]),
             {noreply, State};
         {ok, Socket}  ->
-            case send(Socket, Token, Payload) of
+            case send(Socket, Token, Payload, Extra) of
                 ok ->
                     {noreply, State#state{socket = Socket}};
                 {error, Reason} ->
@@ -104,8 +110,8 @@ handle_cast({push, Token, Payload}, #state{socket = undefined,
             end
     end;
 
-handle_cast({push, Token, Payload}, #state{socket  = Socket} = State) ->
-    case send(Socket, Token, Payload) of
+handle_cast({push, Token, Payload, Extra}, #state{socket  = Socket} = State) ->
+    case send(Socket, Token, Payload, Extra) of
         ok ->
             {noreply, State};
         {error, Reason} ->
@@ -153,23 +159,24 @@ code_change(_OldVsn, State, _Extra) ->
 %%% ----------------------------------------------------
 %% Internal. functions.
 %% -----------------------------------------------------
-send(Socket, Token, Payload) ->
-    do_send(Socket, Token, Payload).
 
-do_send(_Socket, Token, _Payload) when is_list(Token), length(Token)=/=64 ->
+send(Socket, Token, Payload, Extra) ->
+    do_send(Socket, Token, Payload, Extra).
+
+do_send(_Socket, Token, _Payload, _Extra) when is_list(Token), length(Token)=/=64 ->
     ?ERROR_MSG("Invalid token : ~p~n", [Token]);
-do_send(Socket, Token, Payload) ->
-    Packet = pack(Token, Payload),
+do_send(Socket, Token, Payload, Extra) ->
+    Packet = pack(Token, Payload, Extra),
     ssl:send(Socket, Packet).
     
 
-pack(Token, Payload) ->
+pack(Token, Payload, Extra) ->
     TokenBits = if is_list(Token) ->
                         hex_str_to_binary(Token);
                     true ->
                         Token
                 end,
-    Json = payload_to_json(Payload),
+    Json = payload_to_json(Payload, Extra),
     PayloadLen = size(Json),
     <<0:8, 32:16/big, TokenBits/bits, PayloadLen:16/big, Json/bits>>.
 
@@ -183,7 +190,7 @@ do_hex_str_to_bin([C1,C2|Rest], L) ->
     Int = list_to_integer([C1,C2], 16),
     do_hex_str_to_bin(Rest, [Int|L]).
 
-payload_to_json(Payload) ->
+payload_to_json(Payload, Extra) ->
     ApsList = [{"alert", Payload#payload.alert},
                {"badge", Payload#payload.badge},
                {"sound", Payload#payload.sound}],
@@ -194,7 +201,7 @@ payload_to_json(Payload) ->
                   (Other, Acc) ->
                       [Other | Acc]
               end,
-    PayloadJson = {obj, [{"aps", {obj, lists:foldl(FoldFun, [], ApsList)}}]},
+    PayloadJson = {obj, [{"aps", {obj, lists:foldl(FoldFun, [], ApsList)}}] ++ Extra},
     list_to_binary(rfc4627:encode(PayloadJson)).
 
 

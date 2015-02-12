@@ -296,10 +296,6 @@ init([]) ->
     update_tables(),
     mnesia:create_table(session,[{ram_copies, [node()]},{attributes, record_info(fields, session)}]),
     mnesia:create_table(session_counter,[{ram_copies, [node()]}, {attributes, record_info(fields, session_counter)}]),
-    %% 2014-2-27 : ACK进程信息
-    %% 2014-3-5 : 此逻辑转到外部模块，此处作废
-    %% ?DEBUG("CREATE_TABLE_ACK :::> ~p",[session_ack]),
-    %% mnesia:create_table(session_ack,[{ram_copies, [node()]}, {attributes, record_info(fields, session_ack)}]),
 	
     mnesia:add_table_index(session, usr),
     mnesia:add_table_index(session, us),
@@ -398,30 +394,6 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 %%% Internal functions
 %%--------------------------------------------------------------------
-
-%% 对ACK表的ACID操作
-%% 2014-3-5 : 这部分逻辑，挪到外部模块实现，此处逻辑作废
-%% ack(set,ID,PID) ->
-%% 	?INFO_MSG("ack_set,ID=~p,PID=~p",[ID,PID]),
-%%     F = fun() ->
-%% 		mnesia:write(#session_ack{id=ID,pid=PID,ct=calendar:local_time()})
-%% 	end,
-%%     mnesia:sync_dirty(F).
-%% ack(get,ID) ->
-%% 	?INFO_MSG("ack_get,ID=~p",[ID]),
-%% 	ACKS = mnesia:dirty_read(session_ack,ID),
-%% 	case ACKS of 
-%% 		[ACK] ->
-%% 			{ok,ACK#session_ack.pid};
-%% 		[] ->
-%% 			{empty}
-%% 	end;
-%% ack(del,ID) ->
-%% 	?INFO_MSG("ack_del,ID=~p",[ID]),
-%%     F = fun() ->
-%% 		mnesia:delete({session_ack,ID})
-%% 	end,
-%%     mnesia:sync_dirty(F).
 
 set_session(SID, User, Server, Resource, Priority, Info) ->
     LUser = jlib:nodeprep(User),
@@ -616,8 +588,6 @@ route_message(From, To, Packet) ->
             ok
     end.
 
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 clean_session_list(Ss) ->
     clean_session_list(lists:keysort(#session.usr, Ss), []).
