@@ -24,6 +24,8 @@
 
 -record(state, {session_id, seq, count = 0, resv1, resv2, resv3}).
 
+
+%%resv1存储最后一条消息的时间
 -record(moyou_message, {id, session_id, from, mt, packet, time, resv1, resv2, resv3}).
 
 -record(moyou_session_seq, {session_id, seq = 0, resv1, resv2, resv3}).
@@ -59,15 +61,23 @@ init(SessionID) ->
     erlang:send_after(30 * 1000, self(), check),
     case mnesia:dirty_read(moyou_session_seq_tab, SessionID) of
         [] ->
-            %%群组session,旧版本兼容处理
-            case moyou_util:is_group_session(SessionID) of
-                true ->
-                    Seq = moyou_compatible:migrate_group_session_seq(SessionID),
-                    init_session_seq(SessionID, Seq),
-                    {ok, #state{session_id = SessionID, seq = Seq}};
-                _ ->
-                    init_session_seq(SessionID, 0),
-                    {ok, #state{session_id = SessionID, seq = 0}}
+            Sql = io_lib:format("select seq, resv1 from moyou_session_seq where session_id = '~s'", [SessionID]),
+            case db_sql:get_row(Sql) of
+                [] ->
+                    %%群组session,旧版本兼容处理
+                    case moyou_util:is_group_session(SessionID) of
+                        true ->
+                            Seq = moyou_compatible:migrate_group_session_seq(SessionID),
+                            init_session_seq(SessionID, Seq),
+                            {ok, #state{session_id = SessionID, seq = Seq}};
+                        _ ->
+                            init_session_seq(SessionID, 0),
+                            {ok, #state{session_id = SessionID, seq = 0}}
+                    end;
+                [Seq, Resv1] ->
+                    R = #moyou_session_seq{session_id = SessionID, seq = Seq, resv1 = convert(Resv1)},
+                    mnesia:dirty_write(moyou_session_seq_tab, R),
+                    {ok, #state{session_id = SessionID, seq = Seq}}
             end;
         [R] ->
             {ok, #state{session_id = SessionID, seq = R#moyou_session_seq.seq}}
@@ -90,7 +100,7 @@ handle_call({store_message, From, Packet}, _From, #state{session_id = SessionID,
             Packet1 = {Tag, "message", Attrs1, Body},
             Message = pack_message(Sid, SessionID, From, Mt, Packet1, Now),
             mnesia:dirty_write(moyou_message_tab, Message),
-            R = #moyou_session_seq{session_id = SessionID, seq = Seq + 1},
+            R = #moyou_session_seq{session_id = SessionID, seq = Seq + 1, resv1 = Now},
             mnesia:dirty_write(moyou_session_seq_tab, R),
             ets:insert(ets_cid_and_sid, {Cid, Sid, Now}),
             {reply, {ok, Sid, Seq + 1}, State#state{seq = Seq + 1, count = State#state.count + 1}}
@@ -124,4 +134,10 @@ code_change(_OldVsn, State, _Extra) ->
 init_session_seq(SessionID, Seq) ->
     R = #moyou_session_seq{session_id = SessionID, seq = Seq},
     mnesia:dirty_write(moyou_session_seq_tab, R).
+
+
+convert(<<"undefined">>) ->
+    undefined;
+convert(Data) ->
+    list_to_integer(binary_to_list(Data)).
 

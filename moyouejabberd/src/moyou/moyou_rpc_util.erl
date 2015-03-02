@@ -141,7 +141,10 @@ rpc_call([Node | Rest], Module, Function, Args) ->
             ?ERROR_MSG("rpc_call ~p:~p(~p) failed~n, Reason : ~p~n", [Module, Function, Args, Reason]),
             rpc_call(Rest, Module, Function, Args);
         {ok, Data} ->
-            Data
+            Data;
+        Result ->
+            ?ERROR_MSG("rpc_call ~p:~p(~p) return unknow result : ~p~n", [Module, Function, Args, Result]),
+            rpc_call(Rest, Module, Function, Args)
     end.
 
 

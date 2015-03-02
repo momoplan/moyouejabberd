@@ -43,6 +43,7 @@
     get_session_id/3,
     get_session_id/1,
     is_group_session/1,
+    is_system_session/1,
     get_group_id_from_session/1,
     format_jid/1,
     term_to_bitstring/1,
@@ -113,7 +114,7 @@ feach_message([Element | Message], List) ->
         {xmlelement, "body", _, _} ->
             feach_message(Message, [get_text_message_form_packet_result(Element) | List]);
         _ ->
-            feach_message(Message,List)
+            feach_message(Message, List)
     end;
 feach_message([], List) ->
     List.
@@ -177,6 +178,8 @@ get_session_id(_Mt, From, To) ->
     case From#jid.user of
         [$s, $y, $s | _] ->  %%系统消息
             lists:concat(["system_", To#jid.user]);
+        "10000" ->           %%系统消息
+            lists:concat(["system1_", To#jid.user]);
         _ ->
             lists:concat(["friend_" | lists:sort([From#jid.user, To#jid.user])])
     end.
@@ -186,6 +189,12 @@ is_group_session([$g, $r, $o, $u, $p | _]) ->
 is_group_session(_) ->
     false.
 
+
+%%system和10000号的消息都是系统消息
+is_system_session([$s, $y, $s, $t, $e, $m | _]) ->
+    true;
+is_system_session(_) ->
+    false.
 
 get_group_id_from_session(SessionID) ->
     [_Prefix, GroupID] = re:split(SessionID, "_", [{return, list}]),

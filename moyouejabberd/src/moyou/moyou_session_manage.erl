@@ -12,6 +12,8 @@
 
 store_message(SessionID, From, Packet) ->
     case safe_call(SessionID, {store_message, From, Packet}, 3) of
+        skip ->
+            skip;
         {ok, Sid, Seq} ->
             moyou_user_manage:update_session_all_seq([From#jid.user], SessionID, Seq),
             moyou_user_manage:update_session_read_seq(From#jid.user, SessionID, Seq),

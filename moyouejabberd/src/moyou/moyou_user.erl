@@ -97,6 +97,22 @@ handle_cast({update_session_read_seq, SessionID, Seq}, State) ->
                             mnesia:dirty_write(moyou_user_tab, UserInfo1);
                         true ->
                             skip
+                    end,
+                    case moyou_util:is_system_session(SessionID) of
+                        true ->
+                            case State#state.uid of
+                                "10000" ->
+                                    skip;
+                                [$s, $y, $s | _] ->
+                                    skip;
+                                _ ->
+                                    Mid = lists:concat([SessionID, "_", Seq]),
+                                    mnesia:dirty_delete(moyou_message_tab, Mid),
+                                    Sql = io_lib:format("delete from moyou_message where mid = '~s'",[Mid]),
+                                    db_sql:execute(Sql)
+                            end;
+                        _ ->
+                            skip
                     end
             end
     end,
