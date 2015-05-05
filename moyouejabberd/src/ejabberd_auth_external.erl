@@ -44,6 +44,7 @@
 	 remove_user/2,
 	 remove_user/3,
 	 store_type/0,
+         check_password_extauth/3,
 	 plain_password_required/0
 	]).
 
@@ -170,7 +171,7 @@ check_password_extauth(User, Server, Password) ->
         _ ->
             check_password_extauth(do, User, Server, Password)
     end.
-check_password_extauth(do, User, Server, Password) ->
+check_password_extauth(do, User, Server, Password) when Server =:= "gamepro.com" ->
     Url = moyou_util:get_config(gamepro_server),
     PostBody = {obj, [{"service", <<"service.uri.pet_sso">>},
                       {"method", <<"token">>},
@@ -196,7 +197,9 @@ check_password_extauth(do, User, Server, Password) ->
                 {error, _Reason}->
                     false
             end
-    end.
+    end;
+check_password_extauth(do, _User, _Server, _Password) ->
+    true.
 
 %% @spec (User, Server, Password) -> true | false
 try_register_extauth(User, Server, Password) ->

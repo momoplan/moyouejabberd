@@ -18,7 +18,8 @@
 
 -export([
     tmp_clean_message/0,
-    tmp_clean_session/0
+    tmp_clean_session/0,
+    tmp_clean_dump_session/0
         ]).
 
 -record(state, {dump_timer = none}).
@@ -32,6 +33,7 @@
 
 clean() ->
     gen_server:cast(?MODULE, clean).
+
 
 cancel() ->
     gen_server:cast(?MODULE, cancel).
@@ -147,6 +149,7 @@ deal_dump([Key | T]) ->
                 undefined ->
                     Seqs = dump_all_seqs(DumpSeq, Seq),
                     persistence(Key, Seqs),
+                    persistence_dump_session(Key, Seqs),
                     persistence_session(Key, R),
                     ets:delete(ets_moyou_session, Key);
                 Time ->
@@ -154,11 +157,13 @@ deal_dump([Key | T]) ->
                         Now - Time > 43200 ->  %%离线12小时以上的session的消息全部存储进库
                             Seqs = dump_all_seqs(DumpSeq, Seq),
                             persistence(Key, Seqs),
+                            persistence_dump_session(Key, Seqs),
                             persistence_session(Key, R),
                             ets:delete(ets_moyou_session, Key);
                         true ->
                             Seqs = dump_seqs(Key, DumpSeq, Seq),
-                            persistence(Key, Seqs)
+                            persistence(Key, Seqs),
+                            persistence_dump_session(Key, Seqs)
                     end
             end
     end,
@@ -167,11 +172,15 @@ deal_dump([Key | T]) ->
 
 
 get_session_dump_seq(SessionID) ->
-    case mnesia:dirty_read(moyou_session_dump_tab, SessionID) of
+    Sql = io_lib:format("select dump_seq from moyou_session_dump_seq where session_id = '~s'", [SessionID]),
+    case catch db_sql:get_row(Sql) of
+        {'EXIT', Reason1} ->
+            ?ERROR_MSG("Sql : ~p get_row error~n, reason : ~p~n", [Sql, Reason1]),
+            0;
         [] ->
             0;
-        [R] ->
-            R#moyou_session_dump.dump_seq
+        [Num] ->
+            Num
     end.
 
 
@@ -215,8 +224,8 @@ persistence(SessionID, [Seq | T]) ->
                     persistence(SessionID, T);
                 _ ->
                     mnesia:dirty_delete(moyou_message_tab, Mid),
-                    R = #moyou_session_dump{session_id = SessionID, dump_seq = Seq},
-                    mnesia:dirty_write(moyou_session_dump_tab, R),
+                    %                    R = #moyou_session_dump{session_id = SessionID, dump_seq = Seq},
+                    %                    mnesia:dirty_write(moyou_session_dump_tab, R),
                     persistence(SessionID, T)
             end
     end.
@@ -249,7 +258,22 @@ persistence_message(_Key) ->
 %                    dump_msg()
 %            end
 %    end.
-                
+persistence_dump_session(_Key, []) ->
+    skip;
+persistence_dump_session(Key, Seqs) ->
+    Sql1 = io_lib:format("select id from moyou_session_dump_seq where session_id = '~s'", [Key]),
+    case catch db_sql:get_row(Sql1) of
+        {'EXIT', Reason1} ->
+            ?ERROR_MSG("Sql : ~p get_row error~n, reason : ~p~n", [Sql1, Reason1]);
+        [] ->
+            Sql = "insert into moyou_session_dump_seq(session_id, dump_seq) values",
+            Values = lists:flatten(io_lib:format("('~s', ~p)", [Key, lists:max(Seqs)])),
+            catch db_sql:execute(Sql ++ Values);
+        [ID] ->
+            Sql = io_lib:format("update moyou_session_dump_seq set dump_seq = ~p where id = ~p", [lists:max(Seqs), ID]),
+            catch db_sql:execute(Sql)
+    end.
+    
     
 persistence_session(Key, R) ->
     Sql1 = io_lib:format("select id from moyou_session_seq where session_id = '~s'", [Key]),
@@ -322,3 +346,56 @@ tmp_clean_session([Key | T]) ->
             persistence_session(Key, R)
     end,
     tmp_clean_session(T).
+
+
+
+tmp_clean_dump_session() ->
+    AllKeys = mnesia:dirty_all_keys(moyou_session_dump_tab),
+    tmp_clean_dump_session(AllKeys, 1).
+
+
+tmp_clean_dump_session(_List, 101) ->
+    ok;
+tmp_clean_dump_session(List, N) ->
+    SubKeys = lists:sublist(List, (N - 1) * 80000 + 1, 80000),
+    spawn(fun() ->
+                  tmp_clean_dump_session(SubKeys)
+          end),
+    tmp_clean_dump_session(List, N + 1).
+
+
+tmp_clean_dump_session([]) ->
+    ok;
+tmp_clean_dump_session([Key | T]) ->
+    case mnesia:dirty_read(moyou_session_dump_tab, Key) of
+        [] ->
+            skip;
+        [R] ->
+            persistence_dump_session1(Key, R)
+    end,
+    tmp_clean_dump_session(T).
+
+
+persistence_dump_session1(Key, R) ->
+    Sql1 = io_lib:format("select id from moyou_session_dump_seq where session_id = '~s'", [Key]),
+    case catch db_sql:get_row(Sql1) of
+        {'EXIT', Reason1} ->
+            ?ERROR_MSG("Sql : ~p get_row error~n, reason : ~p~n", [Sql1, Reason1]);
+        [] ->
+            Sql = "insert into moyou_session_dump_seq(session_id, dump_seq) values",
+            Values = lists:flatten(io_lib:format("('~s', ~p)", [Key, R#moyou_session_dump.dump_seq])),
+            case catch db_sql:execute(Sql ++ Values) of
+                {'EXIT', Reason} ->
+                    ?ERROR_MSG("Sql : ~p execute error~n, reason : ~p~n", [Sql, Reason]);
+                _ ->
+                    mnesia:dirty_delete(moyou_session_dump_tab, Key)
+            end;
+        [ID] ->
+            Sql = io_lib:format("update moyou_session_dump_seq set dump_seq = ~p where id = ~p", [R#moyou_session_dump.dump_seq, ID]),
+            case catch db_sql:execute(Sql) of
+                {'EXIT', Reason} ->
+                    ?ERROR_MSG("Sql : ~p execute error~n, reason : ~p~n", [Sql, Reason]);
+                _ ->
+                    mnesia:dirty_delete(moyou_session_dump_tab, Key)
+            end
+    end.

@@ -36,6 +36,7 @@
     create_or_copy_table/3,
     random/1,
     http_request/2,
+    http_request_no_log/2,
     get_msg_content/1,
     msg_type_2_push_name/1,
     msg_type_2_push_type/1,
@@ -100,6 +101,15 @@ http_request(Url, Params) ->
             ResBody;
         {error, Reason} ->
             ?ERROR_MSG("http_request error, Url : ~p~n, Params : ~p~n, Reason : ~p~n", [Url, Params, Reason]),
+            []
+    end.
+
+
+http_request_no_log(Url, Params) ->
+    case httpc:request(post, {Url, [], "application/x-www-form-urlencoded" , Params}, [{timeout, 60000}], []) of
+        {ok, {_, _, ResBody}} ->
+            ResBody;
+        {error, _Reason} ->
             []
     end.
 

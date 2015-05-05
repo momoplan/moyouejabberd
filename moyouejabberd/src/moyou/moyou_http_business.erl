@@ -100,7 +100,7 @@ business("query_group_msg", Obj) ->
                         lists:concat([Prefix, "_", SessionKey])
                 end,
     Messages = moyou_rpc_util:get_session_msg(binary_to_list(Uid), SessionID, list_to_integer(Seq), Size),
-    Entity = [encode_msg_to_json(Message, binary_to_list(Uid)) ||Message <- Messages],
+    Entity = [encode_msg_to_json(Message, binary_to_list(Uid)) || Message <- Messages],
     {true, Entity};
 business(_, _Obj) ->
     {false, list_to_binary("method undefined")}.
@@ -116,14 +116,14 @@ process_counter(From) ->
         P = rpc:call(From, erlang, whereis, [ejabberd_c2s_sup]),
         case is_pid(P) of
             true ->
-                {links, L} = rpc:call(From,erlang,process_info,[P, links]),
+                {links, L} = rpc:call(From, erlang, process_info, [P, links]),
                 {ok, {From, length(L)}};
             _ ->
                 {no_ejabberd_node, From}
         end
     catch
         _:_->
-            {no_ejabberd_node,From}
+            {no_ejabberd_node, From}
     end.
 process_counter_to_json([E | L], List)->
     {ok,{Node, Total}} = E,

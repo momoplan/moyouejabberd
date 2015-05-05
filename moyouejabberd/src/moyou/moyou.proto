@@ -1,0 +1,54 @@
+//边界协议c2s,s2c：固定长度8字节，type表示后续协议的类型，size表示后续协议的大小
+message Bound {
+  required sfixed32 type = 1;
+  required sfixed32 size = 2;
+}
+
+//登陆协议c2s：type = 1
+message Login {
+  required string server = 1;
+  required string user = 2;
+  required string password = 3;
+  required string resource = 4;
+  optional string resv1 = 5;     //备用字段1
+  optional string resv2 = 6;     //备用字段2
+  optional string resv3 = 7;     //备用字段3
+}
+
+//登陆协议s2c：type = 2
+message OfflineMsg {
+  required int32 status = 1;
+  optional string jid = 2;
+  repeated Msg msg = 3;
+  optional string resv1 = 4;     //备用字段1
+  optional string resv2 = 5;     //备用字段2
+  optional string resv3 = 6;     //备用字段3
+}
+
+//消息协议c2s,s2c:type = 3
+message Msg {
+  required string msg_id = 1;
+  optional string server_id =2;
+  required string from = 3;
+  required string to_user = 4;
+  required string msg_type = 5;
+  optional string group_id = 6;
+  required string msg_time = 7;
+  optional string serial_num = 8;
+  optional string number = 9;
+  required string body = 10;
+  optional string payload = 11;
+  optional string resv1 = 12;     //备用字段1
+  optional string resv2 = 13;     //备用字段2
+  optional string resv3 = 14;     //备用字段3
+}
+//心跳协议c2s, type = 4
+message Heart{
+ required string time = 1;
+}
+
+
+
+
+
+

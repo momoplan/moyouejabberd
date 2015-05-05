@@ -37,8 +37,8 @@ init(Uid) ->
 handle_call({get_offline_msg}, _From, State) ->
     [UserInfo] =  mnesia:dirty_read(moyou_user_tab, State#state.uid),
     SessionList = UserInfo#moyou_user.session_list,
-    OldMessages = moyou_compatible:get_offline_msg(State#state.uid),
-    {reply, {ok, {get_offline_msg(SessionList, []), OldMessages}}, State#state{count = State#state.count + 1}};
+    %    OldMessages = moyou_compatible:get_offline_msg(State#state.uid),
+    {reply, {ok, {get_offline_msg(SessionList, []), []}}, State#state{count = State#state.count + 1}};
 
 handle_call({get_session_msg, SessionID, Seq, Size}, _From, State) ->
     [UserInfo] =  mnesia:dirty_read(moyou_user_tab, State#state.uid),
@@ -186,7 +186,7 @@ get_session_seqs(SessionID, SessionList, Seq, Size) ->
                 Seq - InitSeq < Size ->
                     if
                         Seq > InitSeq ->
-                            lists:seq(InitSeq, Seq - 1);
+                            lists:seq(InitSeq + 1, Seq - 1);
                         true ->
                             []
                     end

@@ -79,7 +79,7 @@ user_send_packet(From, To, {xmlelement, "message", Attrs, Els} = Packet) ->
                     skip;
                 {true, UserList} ->
                     case is_temp_message(Mt) of
-                        true ->   %%ÁÙÊ±ÏûÏ¢×ßÕâÀï
+                        true ->   %%ä¸´æ—¶æ¶ˆæ¯èµ°è¿™é‡Œ
                             spawn(fun() -> route_message(moyou_util:get_id(), From, UserList, Packet1) end);
                         _ ->
                             case moyou_rpc_util:store_message(SessionID, From, Packet1) of

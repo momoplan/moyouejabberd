@@ -268,6 +268,7 @@ get_push_alert(Mt, _From, _ToUserInfo, Packet) when Mt =:= "system"
     orelse Mt =:= "startTeamPreparedConfirm"
     orelse Mt =:= "teamInvite"
     orelse Mt =:= "requestJoinTeam"
+    orelse Mt =:= "lolTeammateItemFromFriend"
     orelse Mt =:= "teamHelper" ->
     Content = hd(moyou_util:get_msg_content(Packet)),
     Name = moyou_util:msg_type_2_push_name(Mt),
@@ -338,7 +339,7 @@ get_user_info(Uid) ->
                               {"params", {obj, [{"userid", Uid}]}}
                              ]},
             Params = "body=" ++ rfc4627:encode(ParamObj),
-            case moyou_util:http_request(Url, Params) of
+            case moyou_util:http_request_no_log(Url, Params) of
                 [] ->
                     [];
                 Body ->
@@ -403,7 +404,7 @@ pack_group_info(Gid, Obj) ->
 
 init([]) ->
     [CertFile, KeyFile, Host, DevCertFile, DevKeyFile, DevHost] = moyou_util:get_config(ios_push_config),
-    PoolSize =  moyou_util:get_config(ios_push_poolsize, 128),
+    PoolSize =  moyou_util:get_config(ios_push_poolsize, 64),
     moyou_util:create_or_copy_table(moyou_push_user_info_tab, [{record_name, moyou_push_user_info},
                                                                {attributes, record_info(fields, moyou_push_user_info)},
                                                                {ram_copies, [node()]}], ram_copies),
@@ -517,7 +518,6 @@ test_normal_msg(Uid) ->
                {"msgtype","normalchat"}],
               [{xmlelement,"body",[],[{xmlcdata,<<"9">>}]}]},
     send_offline_message(From, To, Packet).
-
 
 test_group_msg() ->
     From = {jid, "10111967", "gamepro.com", [], "10111967", "gamepro.com", []},

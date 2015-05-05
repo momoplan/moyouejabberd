@@ -2196,7 +2196,7 @@ send_offline_msg(JID, StateData, [Message | T]) ->
     FixedPacket = {xmlelement, Name, Attrs1, Els},
     case catch send_element(StateData,  FixedPacket) of
         {'EXIT', Reason} ->
-            ?INFO_MSG("Jid : ~p send offline message with exit reason : ~p~n", [JID, Reason]);
+            ?ERROR_MSG("Jid : ~p send offline message with exit reason : ~p~n", [JID, Reason, FixedPacket]);
         _ ->
             send_offline_msg(JID, StateData, T)
     end.
