@@ -8,8 +8,22 @@
     business/2
         ]).
 
+
+-record(session, {sid, usr, us, priority, info}).
 -record(moyou_group_member, {gid, members = []}).
 
+
+business("close_user", Obj) ->
+    {ok, Uid} = rfc4627:get_field(Obj, "uid"),
+    Server ="gamepro.com",
+    US = {Uid, Server},
+    case catch mnesia:dirty_index_read(session, US, #session.us) of
+	{'EXIT', _Reason} ->
+	    {true, ok};
+	Ss ->
+            ?INFO_MSG("Ss : ~p~n", [Ss])
+    end,
+    {true, ok};
 business("process_counter", _Obj) ->
     {true, process_counter()};
 business("remove_group", Obj) ->

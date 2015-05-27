@@ -109,7 +109,7 @@ user_send_packet(From, To, {xmlelement, "message", Attrs, Els} = Packet) ->
 user_send_packet(_From, _To, _Packet) ->
     skip.
 
-check_user_in_group(Mt, From, To) when Mt =:= "groupchat" ->
+check_user_in_group(Mt, From, To) when Mt =:= "groupchat" orelse Mt =:= "chatroom" ->
     Gid = To#jid.user,
     Members = get_group_members(Gid),
     case lists:member(From#jid.user, Members) of
@@ -123,7 +123,7 @@ check_user_in_group(_Mt, _From, To) ->
 
 ack(#jid{server = Server} = From, Mt, Cid, Time, Sid) ->
     if
-        Mt =:= "normalchat" orelse Mt =:= "groupchat" ->
+        Mt =:= "normalchat" orelse Mt =:= "groupchat" orelse Mt =:= "chatroom" ->
             Attr = ack_attr(From, Server, Time, Sid),
             Els = [{xmlelement, "body", [], [{xmlcdata, list_to_binary("{'src_id':'" ++ Cid ++ "','received':'true'}")}]}],
             Packet = {xmlelement, "message", Attr , Els},

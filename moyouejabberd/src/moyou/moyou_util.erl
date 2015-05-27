@@ -182,7 +182,7 @@ get_json_field(Obj, Key, Default) ->
 get_session_id(Gid) ->
     lists:concat(["group_", Gid]).
 
-get_session_id(Mt, _From, To) when Mt =:= "groupchat" ->
+get_session_id(Mt, _From, To) when Mt =:= "groupchat" orelse Mt =:= "chatroom" ->
     lists:concat(["group_", To#jid.user]);
 get_session_id(_Mt, From, To) ->
     case From#jid.user of

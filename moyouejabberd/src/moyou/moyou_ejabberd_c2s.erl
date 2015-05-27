@@ -139,7 +139,7 @@ handle_call(_Request, _From, State) ->
 %%                                      {stop, Reason, State}
 %% Description: Handling cast messages
 %%--------------------------------------------------------------------
-handle_cast(close, State) ->
+handle_cast(closed, State) ->
     {stop, normal, State};
 handle_cast({update, State1}, State) ->
     State2 = State#state{authenticated = State1#state.authenticated,
