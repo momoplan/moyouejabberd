@@ -36,6 +36,7 @@
     update_user_info/9,
     clear_user_session_info/2,
     get_session_msg/4,
+    get_chatroom_msg/3,
     get_offline_msg/1
         ]).
 
@@ -64,6 +65,15 @@ get_session_msg(Uid, SessionID, Seq, Size) ->
             skip;
         NodeList ->
             rpc_call(NodeList, moyou_user_manage, get_session_msg, [Uid, SessionID, Seq, Size])
+    end.
+
+
+get_chatroom_msg(SessionID, Seq, Size) ->
+    case moyou_util:get_config(moyou_session_service) of
+        undefined ->
+            skip;
+        NodeList ->
+            rpc_call(NodeList, moyou_session_manage, get_session_msg, [SessionID, Seq, Size])
     end.
 
 

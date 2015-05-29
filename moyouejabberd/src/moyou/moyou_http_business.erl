@@ -116,6 +116,20 @@ business("query_group_msg", Obj) ->
     Messages = moyou_rpc_util:get_session_msg(binary_to_list(Uid), SessionID, list_to_integer(Seq), Size),
     Entity = [encode_msg_to_json(Message, binary_to_list(Uid)) || Message <- Messages],
     {true, Entity};
+business("query_chatroom_msg", Obj) ->
+    {ok, Mid} = rfc4627:get_field(Obj, "msg_id"),
+    {ok, Uid} = rfc4627:get_field(Obj, "uid"),
+    Size = case rfc4627:get_field(Obj, "size") of
+               {ok, SizeTmp} ->
+                   list_to_integer(binary_to_list(SizeTmp));
+               _ ->
+                   20
+           end,
+    [Prefix, SessionKey, Seq] = re:split(binary_to_list(Mid), "_", [{return, list}]),
+    SessionID = lists:concat([Prefix, "_", SessionKey]),
+    Messages = moyou_rpc_util:get_chatroom_msg(SessionID, list_to_integer(Seq), Size),
+    Entity = [encode_msg_to_json(Message, binary_to_list(Uid)) || Message <- Messages],
+    {true, Entity};
 business(_, _Obj) ->
     {false, list_to_binary("method undefined")}.
 

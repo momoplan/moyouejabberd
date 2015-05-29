@@ -3,7 +3,8 @@
 
 -export([
     store_message/3,
-    query_session_seq/1
+    query_session_seq/1,
+    get_session_msg/3
         ]).
 
 
@@ -25,6 +26,10 @@ store_message(SessionID, From, Packet) ->
 
 query_session_seq(SessionID) ->
     safe_call(SessionID, {query_session_seq}, 3).
+
+
+get_session_msg(SessionID, Seq, Size) ->
+    safe_call(SessionID, {get_session_msg, Seq, Size}, 3).
 
 
 get_session_pid(SessionID) ->

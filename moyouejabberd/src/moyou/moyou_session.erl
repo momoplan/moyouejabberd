@@ -105,6 +105,11 @@ handle_call({store_message, From, Packet}, _From, #state{session_id = SessionID,
             ets:insert(ets_cid_and_sid, {Cid, Sid, Now}),
             {reply, {ok, Sid, Seq + 1}, State#state{seq = Seq + 1, count = State#state.count + 1}}
     end;
+
+handle_call({get_session_msg, Seq, Size}, _From, #state{session_id = SessionID, seq = Seq} = State) ->
+    SeqList = get_session_seqs(Seq, Size),
+    {reply, {ok, get_messages(SessionID, SeqList, [])}, State#state{count = State#state.count + 1}};
+
 handle_call(_Request, _From, State) ->
     {reply, ok, State}.
 
@@ -141,3 +146,33 @@ convert(<<"undefined">>) ->
 convert(Data) ->
     list_to_integer(binary_to_list(Data)).
 
+
+get_session_seqs(Seq, Size) ->
+    if
+        Seq - Size >= 0 ->
+            lists:seq(Seq - Size, Seq - 1);
+        true ->
+            lists:seq(1, Seq - 1)
+    end.
+
+
+get_messages(_SessionID, [], Acc) ->
+    lists:reverse(Acc);
+get_messages(SessionID, [Seq | T], Acc) ->
+    Mid = lists:concat([SessionID, "_", Seq]),
+    case mnesia:dirty_read(moyou_message_tab, Mid) of
+        [] ->
+            Sql = lists:flatten(io_lib:format("select `from`, `mt`, `packet`, `time` from moyou_message where mid = '~s'", [Mid])),
+            case catch db_sql:get_row(Sql) of
+                {'EXIT', Reason} ->
+                    ?ERROR_MSG("Sql : ~p get row error~n, reason : ~p~n", [Sql, Reason]),
+                    get_messages(SessionID, T, Acc);
+                [] ->
+                    get_messages(SessionID, T, Acc);
+                [From, Mt, Packet, Time]  ->
+                    Message = moyou_session:pack_db_message(Mid, SessionID, From, Mt, Packet, Time),
+                    get_messages(SessionID, T, [Message | Acc])
+            end;
+        [Message] ->
+            get_messages(SessionID, T, [Message | Acc])
+    end.
