@@ -16,8 +16,13 @@ store_message(SessionID, From, Packet) ->
         skip ->
             skip;
         {ok, Sid, Seq} ->
-            moyou_user_manage:update_session_all_seq([From#jid.user], SessionID, Seq),
-            moyou_user_manage:update_session_read_seq(From#jid.user, SessionID, Seq),
+            case moyou_util:is_system_session(SessionID) of
+                true ->
+                    skip;
+                _ ->
+                    moyou_user_manage:update_session_all_seq([From#jid.user], SessionID, Seq),
+                    moyou_user_manage:update_session_read_seq(From#jid.user, SessionID, Seq)
+            end,
             {ok, {Sid, Seq}};
         Data ->
             {ok, Data}

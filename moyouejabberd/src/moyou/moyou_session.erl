@@ -106,8 +106,14 @@ handle_call({store_message, From, Packet}, _From, #state{session_id = SessionID,
             {reply, {ok, Sid, Seq + 1}, State#state{seq = Seq + 1, count = State#state.count + 1}}
     end;
 
-handle_call({get_session_msg, Seq, Size}, _From, #state{session_id = SessionID, seq = Seq} = State) ->
-    SeqList = get_session_seqs(Seq, Size),
+handle_call({get_session_msg, Seq, Size}, _From, #state{session_id = SessionID, seq = SessionSeq} = State) ->
+    Seq1 = case Seq of
+        0 ->
+            SessionSeq + 1;
+        _ ->
+            Seq
+    end,
+    SeqList = get_session_seqs(Seq1, Size),
     {reply, {ok, get_messages(SessionID, SeqList, [])}, State#state{count = State#state.count + 1}};
 
 handle_call(_Request, _From, State) ->
