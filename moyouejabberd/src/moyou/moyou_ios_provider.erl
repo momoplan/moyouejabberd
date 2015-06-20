@@ -58,19 +58,23 @@ push(Pid, Tokens, Sound, Alert, Extra) ->
 %% ----------------------------------------------------
 init([CertFile, KeyFile, Host]) ->
     process_flag(trap_exit, true),
-    case create_socket(CertFile, KeyFile, Host) of
-        {ok, Socket} ->
-            {ok, #state{host = Host,
-                        certfile = CertFile,
-                        keyfile = KeyFile,
-                        socket = Socket}};
-        Crap ->
-            ?ERROR_MSG("failed to create socket to apns for reason :~p~n", [Crap]),
-            {ok, #state{host = Host,
-                        certfile = CertFile,
-                        keyfile = KeyFile,
-                        socket = undefined}}
-    end.
+    {ok, #state{host = Host,
+                certfile = CertFile,
+                keyfile = KeyFile,
+                socket = undefined}}.
+%    case create_socket(CertFile, KeyFile, Host) of
+%        {ok, Socket} ->
+%            {ok, #state{host = Host,
+%                        certfile = CertFile,
+%                        keyfile = KeyFile,
+%                        socket = Socket}};
+%        Crap ->
+%            ?ERROR_MSG("failed to create socket to apns for reason :~p~n", [Crap]),
+%            {ok, #state{host = Host,
+%                        certfile = CertFile,
+%                        keyfile = KeyFile,
+%                        socket = undefined}}
+%    end.
 
 create_socket(CertFile, KeyFile, Host)  ->
     Options =  [{certfile, CertFile},
