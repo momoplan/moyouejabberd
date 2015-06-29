@@ -74,23 +74,29 @@ user_send_packet(From, To, {xmlelement, "message", Attrs, Els} = Packet) ->
                      end,
             Packet1 = {xmlelement, "message", Attrs2, Els},
             SessionID = moyou_util:get_session_id(Mt, From, To),
-            case check_user_in_group(Mt, From, To) of
-                false ->
+            %%判断消息内容是否含有敏感词汇
+            case check_message_key_word(Packet1, Mt) of
+                true ->
                     skip;
-                {true, UserList} ->
-                    case is_temp_message(Mt) of
-                        true ->   %%临时消息走这里
-                            spawn(fun() -> route_message(moyou_util:get_id(), From, UserList, Packet1) end);
-                        _ ->
-                            case moyou_rpc_util:store_message(SessionID, From, Packet1) of
-                                {repeat, Sid} ->
-                                    spawn(fun() -> ack(From, Mt, Cid, Time, Sid) end);
-                                {Sid, Seq} ->
-                                    spawn(fun() -> ack(From, Mt, Cid, Time, Sid) end),
-                                    moyou_rpc_util:update_session_all_seq(UserList, SessionID, Seq),
-                                    Attrs3 = [{"id", Sid} | [{K, V} || {K, V} <- Attrs2, K =/= "id"]],
-                                    Packet2 = {xmlelement, "message", Attrs3, Els},
-                                    spawn(fun() -> route_message(Sid, From, UserList, Packet2) end)
+                _ ->
+                    case check_user_in_group(Mt, From, To) of
+                        false ->
+                            skip;
+                        {true, UserList} ->
+                            case is_temp_message(Mt) of
+                                true ->   %%临时消息走这里
+                                    spawn(fun() -> route_message(moyou_util:get_id(), From, UserList, Packet1) end);
+                                _ ->
+                                    case moyou_rpc_util:store_message(SessionID, From, Packet1) of
+                                        {repeat, Sid} ->
+                                            spawn(fun() -> ack(From, Mt, Cid, Time, Sid) end);
+                                        {Sid, Seq} ->
+                                            spawn(fun() -> ack(From, Mt, Cid, Time, Sid) end),
+                                            moyou_rpc_util:update_session_all_seq(UserList, SessionID, Seq),
+                                            Attrs3 = [{"id", Sid} | [{K, V} || {K, V} <- Attrs2, K =/= "id"]],
+                                            Packet2 = {xmlelement, "message", Attrs3, Els},
+                                            spawn(fun() -> route_message(Sid, From, UserList, Packet2) end)
+                                    end
                             end
                     end
             end;
@@ -108,6 +114,52 @@ user_send_packet(From, To, {xmlelement, "message", Attrs, Els} = Packet) ->
     end;
 user_send_packet(_From, _To, _Packet) ->
     skip.
+
+
+check_message_key_word(Packet, Mt) ->
+    Body = moyou_util:get_msg_content(Packet),
+    Content = get_content(Body, Mt),
+    List = ["习近平", "郭文贵", "胡锦涛", "杨剑昌", "艾山•买合苏木", "江泽民" , "王岐山", "陈希同", "赵乐际", "王荣", "李源潮", "薄熙来",
+            "江贼民", "郭永丰", "徐纯合", "令计划", "曾庆红", "温家宝", "戴相龙", "张春贤", "周永康", "赵晋", "赵少麟", "张高丽", "王立军",
+            "邓小平", "刘云山", "刘彦平", "邱进", "贝兹", "朱镕基", "李克强", "艾未未", "吴官正", "姜野飞", "王小洪", "刘亚洲", "张德江",
+            "贺文", "秦天", "韩正", "杨秀珠", "陈宝芝", "习氏政权", "中共独裁", "执政", "中国政权垮台", "占中", "中国官场", "邻水铁路",
+            "政改", "法轮功", "“六四”", "煽动民族仇恨", "袋住先", "宗教渗透", "国家暴力", "六四事件", "乙未年盛夏关键词", "六四屠杀",
+            "平反六四", "太子党", "专制独裁", "新闻自由", "媒体自由", "六四问题", "法轮大法", "八九事件", "“四五”事件", "六四晚会",
+            "六四宣言", "沉船事故", "政企关系", "六四屠城", "六四大屠杀", "习总日记", "统战", "自焚", "中国密报", "政治不透明", "文革",
+            "圣战感言", "非法讲经", "暴恐音频", "涉恐", "监狱日记", "istiqlal TV", "中共", "纪委", "常委", "国办", "中办", "习胡", "习江",
+            "习王", "习曾", "习氏", "习大", "习左", "共青团派", "江派", "骑墙派", "左派", "右派", "伊斯兰之声广播", "江氏集团", "中国异议作家",
+            "东伊运", "soundcloud.com", "www.mediafire.com", "archive.org", "ia802701.us.archive.org", "onedrive.live.com", "www.vdisk.cn",
+            "sodiqlar.info", "vimeo.com", "www.ummetislam.net", "www.wisalstudio.net", "www.1mobile.com", "www.muzikkitabi.com", "www.youtube.com/watch?v=uj-iNEFKUNA",
+            "albuxoriy.com", "www.i-qooqaz.com", "uqurlar.blogspot.com", "qmp3music.ru", "www.jundurrahmon.biz", "freelibs.org", "www.4songs.pk",
+            "www.dropbox.com", "db.tt/IFom2aod", "www.youtube.com/watch?v=pNnlCko7oxg&feature=youtu.be", "mp3-songs.pk", "replay.minhaj.tv",
+            "mp3.kedirijaya.com", "app.box.com", "習近平", "郭文貴", "胡錦濤", "楊劍昌", "艾山•買合蘇木", "江澤民", "王岐山", "陳希同", "趙樂際",
+            "王榮", "李源潮", "薄熙來", "江賊民", "郭永豐", "徐純合", "令計畫", "曾慶紅", "溫家寶", "戴相龍", "張春賢", "趙晉", "趙少麟", "張高麗",
+            "王立軍", "鄧小平", "劉雲山", "劉彥平", "邱進", "貝茲", "朱鎔基", "李克強", "薑野飛", "吳官正", "韓正", "楊秀珠", "陳寶芝", "劉亞洲",
+            "張德江", "賀文", "習氏政權", "中共獨裁", "執政", "中國政權垮臺", "中國官場", "鄰水鐵路", "法輪功", "煽動民族仇恨", "宗教滲透", "國家暴力",
+            "乙未年盛夏關鍵字", "六四屠殺", "太子黨", "專制獨裁", "新聞自由", "媒體自由", "六四問題", "法輪大法", "六四晚會", "政企關係", "六四大屠殺",
+            "習總日記", "統戰", "中國密報", "聖戰感言", "非法講經", "暴恐音頻", "監獄日記", "紀委", "國辦", "中辦", "習胡", "習江", "習王", "習曾",
+            "習氏", "習大", "習左", "共青團派", "騎牆派", "伊斯蘭之聲廣播", "江氏集團", "中國異議作家", "東伊運"],
+    check_key_word(Content, List).
+
+
+get_content(Body, Mt) when Mt =:= "groupchat" ->
+    {ok, Entity, _} = rfc4627:decode(hd(Body)),
+    {ok, Msg} = rfc4627:get_field(Entity, "content"),
+    binary_to_list(Msg);
+get_content(Body, _Mt) ->
+    hd(Body).
+
+
+check_key_word(_Content, []) ->
+    false;
+check_key_word(Content, [KeyWord | L]) ->
+    case string:str(Content, KeyWord) of
+        0 ->
+            check_key_word(Content, L);
+        _ ->
+            true
+    end.
+
 
 check_user_in_group(Mt, From, To) when Mt =:= "groupchat" orelse Mt =:= "chatroom" ->
     Gid = To#jid.user,
